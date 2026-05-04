@@ -1,12 +1,13 @@
 {
-  "name": "21st-desktop",
-  "version": "0.0.54",
+  "name": "backlot",
+  "version": "0.0.1",
   "private": true,
-  "description": "1Code - UI for parallel work with AI agents",
+  "description": "Backlot — desktop app for screenwriters and AI filmmakers",
   "author": {
-    "name": "21st.dev",
-    "email": "support@21st.dev"
+    "name": "Michael Buloichyk",
+    "email": "mbuloichykai@gmail.com"
   },
+  "license": "Apache-2.0",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -18,12 +19,8 @@
     "package:linux": "electron-builder --linux",
     "dist": "electron-builder",
     "dist:manifest": "node scripts/generate-update-manifest.mjs",
-    "dist:upload": "node scripts/upload-release.mjs",
     "claude:download": "node scripts/download-claude-binary.mjs --version=2.1.25",
     "claude:download:all": "node scripts/download-claude-binary.mjs --version=2.1.25 --all",
-    "release": "rm -rf release && bun i && bun run claude:download && bun run build && bun run package:mac && bun run dist:manifest && ./scripts/upload-release-wrangler.sh",
-    "release:dev": "rm -rf release && bun run claude:download && bun run build && bun run package:mac && rm -rf node_modules && bun i",
-    "sync:public": "./scripts/sync-to-public.sh",
     "icon:generate": "node scripts/generate-icon.mjs",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
@@ -134,14 +131,14 @@
     "vite": "^6.3.4"
   },
   "build": {
-    "appId": "dev.21st.agents",
-    "productName": "1Code",
+    "appId": "studio.laniameda.backlot",
+    "productName": "Backlot",
     "npmRebuild": true,
     "protocols": [
       {
-        "name": "1Code",
+        "name": "Backlot",
         "schemes": [
-          "twentyfirst-agents"
+          "backlot"
         ]
       }
     ],
@@ -190,9 +187,7 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "extendInfo": {
-        "NSMicrophoneUsageDescription": "1Code needs microphone access for voice dictation"
-      }
+      "extendInfo": {}
     },
     "dmg": {
       "window": {
@@ -235,10 +230,7 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
     },
-    "publish": {
-      "provider": "generic",
-      "url": "https://cdn.21st.dev/releases/desktop"
-    }
+    "publish": null
   },
   "pnpm": {
     "overrides": {

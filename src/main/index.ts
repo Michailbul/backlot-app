@@ -563,10 +563,10 @@ if (gotTheLock) {
 
     // Set app user model ID for Windows (different in dev to avoid taskbar conflicts)
     if (process.platform === "win32") {
-      app.setAppUserModelId(IS_DEV ? "dev.21st.1code.dev" : "dev.21st.1code")
+      app.setAppUserModelId(IS_DEV ? "studio.laniameda.backlot.dev" : "studio.laniameda.backlot")
     }
 
-    console.log(`[App] Starting 1Code${IS_DEV ? " (DEV)" : ""}...`)
+    console.log(`[App] Starting Backlot${IS_DEV ? " (DEV)" : ""}...`)
 
     // Verify protocol registration after app is ready
     // This helps diagnose first-install issues where the protocol isn't recognized yet
@@ -590,10 +590,10 @@ if (gotTheLock) {
 
     // Set About panel options with Claude Code version
     app.setAboutPanelOptions({
-      applicationName: "1Code",
+      applicationName: "Backlot",
       applicationVersion: app.getVersion(),
       version: `Claude Code ${claudeCodeVersion}`,
-      copyright: "Copyright © 2026 21st.dev",
+      copyright: "Copyright © 2026 Michael Buloichyk · Laniameda Studio",
     })
 
     // Track update availability for menu
@@ -610,7 +610,7 @@ if (gotTheLock) {
         {
           label: app.name,
           submenu: [
-            { role: "about", label: "About 1Code" },
+            { role: "about", label: "About Backlot" },
             {
               label: updateAvailable
                 ? `Update to v${availableVersion}...`
@@ -632,8 +632,8 @@ if (gotTheLock) {
             { type: "separator" },
             {
               label: isCliInstalled()
-                ? "Uninstall '1code' Command..."
-                : "Install '1code' Command in PATH...",
+                ? "Uninstall 'backlot' Command..."
+                : "Install 'backlot' Command in PATH...",
               click: async () => {
                 const { dialog } = await import("electron")
                 if (isCliInstalled()) {
@@ -642,7 +642,7 @@ if (gotTheLock) {
                     dialog.showMessageBox({
                       type: "info",
                       message: "CLI command uninstalled",
-                      detail: "The '1code' command has been removed from your PATH.",
+                      detail: "The 'backlot' command has been removed from your PATH.",
                     })
                     buildMenu()
                   } else {
@@ -655,7 +655,7 @@ if (gotTheLock) {
                       type: "info",
                       message: "CLI command installed",
                       detail:
-                        "You can now use '1code .' in any terminal to open 1Code in that directory.",
+                        "You can now use 'backlot .' in any terminal to open Backlot in that directory.",
                     })
                     buildMenu()
                   } else {
