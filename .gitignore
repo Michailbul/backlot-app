@@ -4,11 +4,12 @@ node_modules/
 .pnp.js
 .yarn/
 
-# Build output
+# Build outputs
 dist/
 build/
 out/
 release/
+release-*/
 *.tsbuildinfo
 
 # Env
@@ -28,13 +29,17 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
-.DS_Store
 
 # OS
+.DS_Store
 Thumbs.db
 
 # Electron
 electron-builder-debug.yml
+electron.vite.config.*.mjs
+
+# Claude binary (downloaded at build time)
+resources/bin/
 
 # Local SQLite (drizzle dev)
 *.db
