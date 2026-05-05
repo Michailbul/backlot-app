@@ -18,7 +18,7 @@ import {
 import { getProjectMcpServers, GLOBAL_MCP_PATH, readClaudeConfig, removeMcpServerConfig, resolveProjectPathFromWorktree, updateClaudeConfigAtomic, updateMcpServerConfig, writeClaudeConfig, type McpServerConfig } from "../../claude-config"
 import { discoverPluginMcpServers } from "../../plugins"
 import { getEnabledPlugins, getApprovedPluginMcpServers } from "./claude-settings"
-import { getExistingClaudeCredentials } from "../../claude-token"
+import { getExistingClaudeCredentials, refreshClaudeToken, isTokenExpired } from "../../claude-token"
 import { chats, claudeCodeCredentials, getDatabase, subChats } from "../../db"
 import { createRollbackStash } from "../../git/stash"
 import { ensureMcpTokensFresh, fetchMcpTools, fetchMcpToolsStdio, getMcpAuthStatus, startMcpOAuth, type McpToolInfo } from "../../mcp-auth"
@@ -134,12 +134,46 @@ function decryptToken(encrypted: string): string {
  * Credential Manager / libsecret) when the user runs `claude /login`. We
  * read straight from there. Falls back to the legacy claudeCodeCredentials
  * SQLite table for compatibility with imported 1code databases.
+ *
+ * If the keychain token is expired (or close to it) we refresh against
+ * Anthropic's token endpoint using the keychain's refreshToken. The
+ * refreshed token is cached in-process; the keychain file is owned by
+ * `claude` itself, we do not write back to it.
  */
-function getClaudeCodeToken(): string | null {
+let refreshedTokenCache: { value: string; expiresAt: number } | null = null
+
+async function getClaudeCodeToken(): Promise<string | null> {
+  // Hot cache: refreshed token still has plenty of life.
+  if (
+    refreshedTokenCache &&
+    refreshedTokenCache.expiresAt > Date.now() + 5 * 60 * 1000
+  ) {
+    return refreshedTokenCache.value
+  }
+
   // Primary: system-keychain credential set by `claude /login`.
   try {
     const keychain = getExistingClaudeCredentials()
     if (keychain?.accessToken) {
+      // Refresh if expired or within the 5-minute buffer.
+      if (keychain.refreshToken && isTokenExpired(keychain.expiresAt)) {
+        try {
+          console.log("[claude] Keychain token expired — refreshing via Anthropic token endpoint.")
+          const refreshed = await refreshClaudeToken(keychain.refreshToken)
+          refreshedTokenCache = {
+            value: refreshed.accessToken,
+            expiresAt: refreshed.expiresAt ?? Date.now() + 3600_000,
+          }
+          return refreshed.accessToken
+        } catch (e) {
+          console.warn(
+            "[claude] Token refresh failed — returning stale token; SDK will surface its own auth error if unusable. Run `claude /login` to re-authenticate.",
+            e,
+          )
+          // Fall through to the (likely-expired) accessToken so the SDK
+          // gets to fail with a useful error rather than us swallowing.
+        }
+      }
       return keychain.accessToken
     }
   } catch (error) {
@@ -707,7 +741,7 @@ export const claudeRouter = router({
 
             // 2.5. AUTO-FALLBACK: Check internet and switch to Ollama if offline
             // Only check if offline mode is enabled in settings
-            const claudeCodeToken = getClaudeCodeToken()
+            const claudeCodeToken = await getClaudeCodeToken()
             const offlineResult = await checkOfflineFallback(
               input.customConfig,
               claudeCodeToken,
