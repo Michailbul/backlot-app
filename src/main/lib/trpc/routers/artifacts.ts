@@ -2,6 +2,7 @@ import { existsSync } from "node:fs"
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { eq } from "drizzle-orm"
+import simpleGit from "simple-git"
 import { z } from "zod"
 import { chats, getDatabase } from "../../db"
 import { publicProcedure, router } from "../index"
@@ -138,7 +139,252 @@ export const artifactsRouter = router({
       const stats = await stat(fullPath)
       return { path: fullPath, mtime: stats.mtimeMs }
     }),
+
+  /**
+   * Diff the screenplay artifact against its last committed (HEAD) state.
+   * The Cursor-style review surface in the renderer reads this and renders
+   * additions / deletions / context as green / red / neutral hunks.
+   *
+   * Returns:
+   *   - status: "untracked" → file is brand-new, no HEAD version yet
+   *             "modified"  → file has uncommitted changes against HEAD
+   *             "clean"     → file matches HEAD; nothing to review
+   *             "missing"   → no worktree or no file at all
+   *   - hunks: parsed unified diff (only when status is "modified" or
+   *            "untracked"); each hunk is a list of lines with kind
+   *            "add" / "del" / "ctx" plus old/new line numbers.
+   */
+  diff: publicProcedure
+    .input(z.object({ chatId: z.string() }))
+    .query(async ({ input }) => {
+      const lookup = lookupWorktree(input.chatId)
+      if (!lookup?.worktreePath) {
+        return { status: "missing" as const, hunks: [] as DiffHunk[] }
+      }
+      const fullPath = resolveArtifactPath(lookup.worktreePath)
+      if (!existsSync(fullPath)) {
+        return { status: "missing" as const, hunks: [] }
+      }
+
+      const git = simpleGit(lookup.worktreePath)
+
+      // Untracked file → synthesize an "all additions" hunk relative to /dev/null.
+      let porcelain = ""
+      try {
+        porcelain = await git.raw(["status", "--porcelain", "--", PRIMARY_ARTIFACT])
+      } catch {
+        // Not a git repo — treat as untracked.
+      }
+      const isUntracked = porcelain.trim().startsWith("??")
+      if (isUntracked) {
+        const content = await readFile(fullPath, "utf-8")
+        return {
+          status: "untracked" as const,
+          hunks: [synthesizeAllAddHunk(content)],
+        }
+      }
+      if (porcelain.trim() === "") {
+        return { status: "clean" as const, hunks: [] }
+      }
+
+      let unified = ""
+      try {
+        unified = await git.diff([
+          "--no-color",
+          "--unified=3",
+          "--",
+          PRIMARY_ARTIFACT,
+        ])
+      } catch (err) {
+        console.warn("[artifacts.diff] git diff failed:", err)
+        return { status: "clean" as const, hunks: [] }
+      }
+      if (!unified.trim()) {
+        return { status: "clean" as const, hunks: [] }
+      }
+      return {
+        status: "modified" as const,
+        hunks: parseUnifiedDiff(unified),
+      }
+    }),
+
+  /**
+   * Accept the current pending changes — git add + commit. Bumps the
+   * "last approved" baseline forward. Returns the new HEAD sha.
+   */
+  accept: publicProcedure
+    .input(
+      z.object({
+        chatId: z.string(),
+        message: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const lookup = lookupWorktree(input.chatId)
+      if (!lookup?.worktreePath) {
+        throw new Error("Chat has no worktree.")
+      }
+      const git = simpleGit(lookup.worktreePath)
+      await git.add([PRIMARY_ARTIFACT])
+      const result = await git.commit(
+        input.message?.trim() ||
+          `Backlot: accept screenplay edit (${new Date().toISOString()})`,
+        [PRIMARY_ARTIFACT],
+        ["--allow-empty"],
+      )
+      return { commitHash: result.commit }
+    }),
+
+  /**
+   * Reject the current pending changes — discard back to HEAD. For
+   * untracked files we just remove them; for modified files we
+   * `git checkout HEAD -- <file>`.
+   */
+  reject: publicProcedure
+    .input(z.object({ chatId: z.string() }))
+    .mutation(async ({ input }) => {
+      const lookup = lookupWorktree(input.chatId)
+      if (!lookup?.worktreePath) {
+        throw new Error("Chat has no worktree.")
+      }
+      const git = simpleGit(lookup.worktreePath)
+      const fullPath = resolveArtifactPath(lookup.worktreePath)
+
+      let porcelain = ""
+      try {
+        porcelain = await git.raw([
+          "status",
+          "--porcelain",
+          "--",
+          PRIMARY_ARTIFACT,
+        ])
+      } catch {
+        /* not a repo — fall through to the unlink path */
+      }
+      const isUntracked = porcelain.trim().startsWith("??")
+
+      if (isUntracked) {
+        // Brand-new file the agent created. Delete it.
+        try {
+          await import("node:fs/promises").then((fs) => fs.unlink(fullPath))
+        } catch (err) {
+          console.warn("[artifacts.reject] unlink failed:", err)
+        }
+        return { reverted: true, kind: "deleted" as const }
+      }
+
+      await git.checkout(["HEAD", "--", PRIMARY_ARTIFACT])
+      return { reverted: true, kind: "reverted" as const }
+    }),
 })
+
+// ────────────────────────────────────────────────────────────────────────
+// Diff parsing — minimal hand-rolled unified-diff reader for one file.
+// We don't pull in 1code's full diff-view stack because the screenplay
+// surface needs its own renderer; the structure here is what feeds it.
+// ────────────────────────────────────────────────────────────────────────
+
+export interface DiffLine {
+  kind: "add" | "del" | "ctx"
+  text: string
+  oldNo: number | null
+  newNo: number | null
+}
+
+export interface DiffHunk {
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  header: string
+  lines: DiffLine[]
+}
+
+function synthesizeAllAddHunk(content: string): DiffHunk {
+  const lines = content.split("\n")
+  // Trailing empty after final newline — drop to avoid a phantom blank line.
+  const cleaned = lines.length > 0 && lines[lines.length - 1] === ""
+    ? lines.slice(0, -1)
+    : lines
+  return {
+    oldStart: 0,
+    oldLines: 0,
+    newStart: 1,
+    newLines: cleaned.length,
+    header: "@@ -0,0 +1," + cleaned.length + " @@",
+    lines: cleaned.map((text, i) => ({
+      kind: "add" as const,
+      text,
+      oldNo: null,
+      newNo: i + 1,
+    })),
+  }
+}
+
+function parseUnifiedDiff(unified: string): DiffHunk[] {
+  const lines = unified.split("\n")
+  const hunks: DiffHunk[] = []
+  let current: DiffHunk | null = null
+  let oldNo = 0
+  let newNo = 0
+
+  for (const line of lines) {
+    // Skip git diff file headers — we only care about hunk content here.
+    if (
+      line.startsWith("diff --git") ||
+      line.startsWith("index ") ||
+      line.startsWith("--- ") ||
+      line.startsWith("+++ ") ||
+      line.startsWith("\\ No newline at end of file")
+    ) {
+      continue
+    }
+    const hunkMatch = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line)
+    if (hunkMatch) {
+      if (current) hunks.push(current)
+      const oldStart = parseInt(hunkMatch[1], 10)
+      const oldLines = hunkMatch[2] ? parseInt(hunkMatch[2], 10) : 1
+      const newStart = parseInt(hunkMatch[3], 10)
+      const newLines = hunkMatch[4] ? parseInt(hunkMatch[4], 10) : 1
+      current = {
+        oldStart,
+        oldLines,
+        newStart,
+        newLines,
+        header: line,
+        lines: [],
+      }
+      oldNo = oldStart
+      newNo = newStart
+      continue
+    }
+    if (!current) continue
+    if (line.startsWith("+")) {
+      current.lines.push({
+        kind: "add",
+        text: line.slice(1),
+        oldNo: null,
+        newNo: newNo++,
+      })
+    } else if (line.startsWith("-")) {
+      current.lines.push({
+        kind: "del",
+        text: line.slice(1),
+        oldNo: oldNo++,
+        newNo: null,
+      })
+    } else if (line.startsWith(" ")) {
+      current.lines.push({
+        kind: "ctx",
+        text: line.slice(1),
+        oldNo: oldNo++,
+        newNo: newNo++,
+      })
+    }
+  }
+  if (current) hunks.push(current)
+  return hunks
+}
 
 /**
  * Helper used by the chat router (claude.ts) to seed the artifact before

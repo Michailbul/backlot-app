@@ -14,10 +14,36 @@
  * content + relative path) does not change.
  */
 
-import { FileText, Eye, Columns, Save, FileEdit, FileQuestion } from "lucide-react"
+import {
+  Check,
+  Columns,
+  Eye,
+  FileEdit,
+  FileQuestion,
+  FileText,
+  Save,
+  Undo2,
+} from "lucide-react"
 import { useMemo, useState } from "react"
 import { trpc } from "../../lib/trpc"
 import { cn } from "../../lib/utils"
+
+// Local mirror of the DiffHunk shape from artifacts.ts. Keeping it as a
+// type-only declaration here avoids a renderer→main-process import cycle.
+type DiffLine = {
+  kind: "add" | "del" | "ctx"
+  text: string
+  oldNo: number | null
+  newNo: number | null
+}
+type DiffHunk = {
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  header: string
+  lines: DiffLine[]
+}
 
 type ViewMode = "editor" | "preview" | "split"
 
@@ -50,9 +76,30 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
     onSuccess: () => artifact.refetch(),
   })
 
+  const diff = trpc.artifacts.diff.useQuery(
+    { chatId: chatId ?? "" },
+    {
+      enabled: !!chatId,
+      refetchInterval: REFETCH_INTERVAL_MS,
+      refetchOnWindowFocus: true,
+    },
+  )
+
+  const refreshAll = () => {
+    artifact.refetch()
+    diff.refetch()
+  }
+
+  const accept = trpc.artifacts.accept.useMutation({ onSuccess: refreshAll })
+  const reject = trpc.artifacts.reject.useMutation({ onSuccess: refreshAll })
+
   const content = artifact.data?.content ?? null
   const exists = artifact.data?.exists ?? false
   const relativePath = artifact.data?.relativePath ?? "screenplay.fountain"
+
+  const diffStatus = diff.data?.status ?? "missing"
+  const hunks = (diff.data?.hunks ?? []) as DiffHunk[]
+  const hasPending = diffStatus === "modified" || diffStatus === "untracked"
 
   const stats = useMemo(() => computeStats(content), [content])
 
@@ -117,6 +164,57 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
         </div>
       </div>
 
+      {/* Pending-changes review bar — only when the file differs from HEAD */}
+      {hasPending && (
+        <div
+          className={cn(
+            "flex items-center justify-between px-3 py-2 border-b border-border",
+            "bg-primary/10",
+          )}
+        >
+          <div className="flex items-center gap-2 text-xs text-foreground">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            <span className="font-medium">
+              {diffStatus === "untracked"
+                ? "New screenplay from the agent."
+                : "Pending changes from the agent."}
+            </span>
+            <span className="text-muted-foreground">
+              Review the highlights below — accept to commit, revert to discard.
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => chatId && reject.mutate({ chatId })}
+              disabled={reject.isPending || accept.isPending}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium",
+                "border border-border bg-background hover:bg-secondary",
+                "text-foreground/80 hover:text-foreground transition-colors",
+                "disabled:opacity-50 disabled:cursor-progress",
+              )}
+            >
+              <Undo2 className="h-3 w-3" />
+              Revert
+            </button>
+            <button
+              type="button"
+              onClick={() => chatId && accept.mutate({ chatId })}
+              disabled={accept.isPending || reject.isPending}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium",
+                "bg-primary text-primary-foreground hover:opacity-90",
+                "disabled:opacity-50 disabled:cursor-progress",
+              )}
+            >
+              <Check className="h-3 w-3" />
+              Accept
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Surface */}
       <div className="flex-1 min-h-0 overflow-auto">
         {!chatId ? (
@@ -126,6 +224,22 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
             onEnsure={() => chatId && ensure.mutate({ chatId })}
             isEnsuring={ensure.isPending}
           />
+        ) : hasPending && viewMode !== "preview" ? (
+          // While there are pending changes, the editor view shows the
+          // green/red diff. Preview still renders the current full content
+          // (post-edit) so the user can see what they'd be approving.
+          viewMode === "split" ? (
+            <div className="grid grid-cols-2 h-full">
+              <div className="border-r border-border min-h-0 overflow-auto">
+                <DiffSurface hunks={hunks} />
+              </div>
+              <div className="min-h-0 overflow-auto">
+                <PreviewSurface content={content} />
+              </div>
+            </div>
+          ) : (
+            <DiffSurface hunks={hunks} />
+          )
         ) : viewMode === "preview" ? (
           <PreviewSurface content={content} />
         ) : viewMode === "split" ? (
@@ -178,6 +292,75 @@ function EditorSurface({ content }: { content: string | null }) {
         {content}
       </pre>
     </div>
+  )
+}
+
+function DiffSurface({ hunks }: { hunks: DiffHunk[] }) {
+  if (hunks.length === 0) {
+    return <BlankCanvas />
+  }
+  return (
+    <div className="h-full">
+      <div className="w-full max-w-[920px] mx-auto px-6 py-8 space-y-6">
+        {hunks.map((hunk, hi) => (
+          <div
+            key={hi}
+            className="rounded-lg border border-border overflow-hidden bg-card/40"
+          >
+            <div className="px-3 py-1.5 bg-secondary/40 border-b border-border text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+              {hunk.header.replace(/^@@\s*|\s*@@$/g, "")}
+            </div>
+            <table className="w-full font-mono text-[13px] leading-6">
+              <tbody>
+                {hunk.lines.map((line, li) => (
+                  <DiffLineRow key={li} line={line} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DiffLineRow({ line }: { line: DiffLine }) {
+  const bg =
+    line.kind === "add"
+      ? "bg-emerald-500/10"
+      : line.kind === "del"
+        ? "bg-rose-500/10"
+        : ""
+  const sigil =
+    line.kind === "add" ? "+" : line.kind === "del" ? "−" : " "
+  const sigilColor =
+    line.kind === "add"
+      ? "text-emerald-500"
+      : line.kind === "del"
+        ? "text-rose-500"
+        : "text-muted-foreground/40"
+  const textColor =
+    line.kind === "del"
+      ? "text-rose-300/80 line-through decoration-rose-500/40"
+      : line.kind === "add"
+        ? "text-emerald-100"
+        : "text-foreground/70"
+
+  return (
+    <tr className={cn(bg, "hover:bg-foreground/[0.02]")}>
+      <td className="select-none w-10 text-right pr-2 align-top text-[10px] text-muted-foreground/50 font-mono tabular-nums pt-0.5">
+        {line.oldNo ?? ""}
+      </td>
+      <td className="select-none w-10 text-right pr-2 align-top text-[10px] text-muted-foreground/50 font-mono tabular-nums pt-0.5">
+        {line.newNo ?? ""}
+      </td>
+      <td className={cn("select-none w-5 text-center align-top", sigilColor)}>
+        {sigil}
+      </td>
+      <td className={cn("pr-4 align-top whitespace-pre-wrap break-words", textColor)}>
+        {line.text || " "}
+      </td>
+    </tr>
   )
 }
 
