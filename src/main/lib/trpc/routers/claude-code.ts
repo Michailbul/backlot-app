@@ -3,7 +3,7 @@ import { safeStorage, shell } from "electron"
 import { z } from "zod"
 import { getAuthManager } from "../../../index"
 import { getClaudeShellEnvironment } from "../../claude"
-import { getExistingClaudeToken } from "../../claude-token"
+import { getExistingClaudeToken, runClaudeSetupToken } from "../../claude-token"
 import { getApiUrl } from "../../config"
 import {
   anthropicAccounts,
@@ -169,29 +169,35 @@ export const claudeCodeRouter = router({
   }),
 
   /**
-   * Start OAuth flow - calls server to create sandbox
+   * Refresh Claude credentials directly via the bundled `claude` binary's
+   * setup-token flow. Backlot does not run a 21st.dev-mediated sandbox —
+   * `claude setup-token` opens its own browser, runs a localhost callback,
+   * writes the new credential to the OS keychain, and exits. We then read
+   * straight from the keychain on the next chat turn.
+   *
+   * Returns sandbox-shaped metadata so the existing ClaudeLoginModal does
+   * not need a parallel patch — the values are sentinels that pollStatus
+   * recognises and short-circuits.
    */
   startAuth: publicProcedure.mutation(async () => {
-    const token = await getDesktopToken()
-    if (!token) {
-      throw new Error("Not authenticated with 21st.dev")
-    }
-
-    // Server creates sandbox (has CodeSandbox SDK)
-    const response = await fetch(`${getApiUrl()}/api/auth/claude-code/start`, {
-      method: "POST",
-      headers: { "x-desktop-token": token },
+    const result = await runClaudeSetupToken((status) => {
+      console.log("[claude-code] setup-token:", status)
     })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Unknown error" }))
-      throw new Error(error.error || `Start auth failed: ${response.status}`)
+    if (!result.success) {
+      throw new Error(
+        result.error ||
+          "Failed to refresh Claude credentials. Open a terminal and run `claude /login` manually.",
+      )
     }
 
-    return (await response.json()) as {
-      sandboxId: string
-      sandboxUrl: string
-      sessionId: string
+    // Sentinel values consumed by pollStatus / submitCode below — they
+    // recognise BACKLOT_DIRECT and return success synthetically so the
+    // modal closes cleanly without a server round-trip.
+    return {
+      sandboxId: "BACKLOT_DIRECT",
+      sandboxUrl: "BACKLOT_DIRECT",
+      sessionId: "BACKLOT_DIRECT",
     }
   }),
 
@@ -206,6 +212,13 @@ export const claudeCodeRouter = router({
       })
     )
     .query(async ({ input }) => {
+      // Backlot direct flow: setup-token has already written credentials
+      // to the keychain by the time the modal starts polling. Report
+      // success immediately and let the modal close itself.
+      if (input.sandboxUrl === "BACKLOT_DIRECT") {
+        return { state: "ready" as const, oauthUrl: null, error: null }
+      }
+
       try {
         const response = await fetch(
           `${input.sandboxUrl}/api/auth/${input.sessionId}/status`

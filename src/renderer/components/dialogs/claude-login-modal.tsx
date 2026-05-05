@@ -153,13 +153,21 @@ export function ClaudeLoginModal() {
       urlOpenedRef.current = true
       setUrlOpened(true)
       openOAuthUrlMutation.mutate(flowState.oauthUrl)
-    } else if (flowState.step === "error") {
-      // Retry on error
+    } else if (flowState.step === "error" || flowState.step === "idle") {
+      // Backlot: startAuth runs `claude setup-token` directly via the
+      // bundled binary. On success the keychain has fresh credentials and
+      // the mutation returns BACKLOT_DIRECT sentinels — close the modal
+      // and trigger the chat retry immediately.
       urlOpenedRef.current = false
       setUrlOpened(false)
       setFlowState({ step: "starting" })
       try {
         const result = await startAuthMutation.mutateAsync()
+        if (result.sandboxId === "BACKLOT_DIRECT") {
+          triggerAuthRetry()
+          setOpen(false)
+          return
+        }
         setFlowState({
           step: "waiting_url",
           sandboxId: result.sandboxId,
@@ -169,24 +177,10 @@ export function ClaudeLoginModal() {
       } catch (err) {
         setFlowState({
           step: "error",
-          message: err instanceof Error ? err.message : "Failed to start authentication",
-        })
-      }
-    } else if (flowState.step === "idle") {
-      // Start auth
-      setFlowState({ step: "starting" })
-      try {
-        const result = await startAuthMutation.mutateAsync()
-        setFlowState({
-          step: "waiting_url",
-          sandboxId: result.sandboxId,
-          sandboxUrl: result.sandboxUrl,
-          sessionId: result.sessionId,
-        })
-      } catch (err) {
-        setFlowState({
-          step: "error",
-          message: err instanceof Error ? err.message : "Failed to start authentication",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Failed to refresh Claude credentials. Run `claude /login` in a terminal and try again.",
         })
       }
     }
@@ -296,10 +290,10 @@ export function ClaudeLoginModal() {
             </div>
             <div className="space-y-1">
               <h1 className="text-base font-semibold tracking-tight">
-                Claude Code
+                Refresh Claude credentials
               </h1>
               <p className="text-sm text-muted-foreground">
-                Connect your Claude Code subscription
+                Your Claude session expired. Click Refresh — Backlot will run <code className="px-1 py-0.5 rounded bg-muted text-xs">claude setup-token</code> for you, your browser will open, sign in, and you’re back.
               </p>
             </div>
           </div>
@@ -316,7 +310,7 @@ export function ClaudeLoginModal() {
                 {userClickedConnect && isLoadingAuth ? (
                   <IconSpinner className="h-4 w-4" />
                 ) : (
-                  "Connect"
+                  "Refresh credentials"
                 )}
               </Button>
             )}
