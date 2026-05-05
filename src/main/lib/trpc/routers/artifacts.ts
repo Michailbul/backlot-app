@@ -346,6 +346,77 @@ export const artifactsRouter = router({
         await unlink(tmp).catch(() => {})
       }
     }),
+
+  /**
+   * Dismiss a single line — the finest review granularity.
+   *
+   * For a "+" line: build a 1-line --unidiff-zero patch describing that
+   * line being added at newNo, then `git apply --reverse` removes it.
+   * For a "-" line: same shape but describing that line being removed
+   * from oldNo; --reverse re-inserts it. Other pending lines stay put.
+   *
+   * Inputs are the line's oldNo / newNo / text from the most recent
+   * artifacts.diff() result — the renderer sends them when the user
+   * clicks the per-line × button. The 2s refetchInterval keeps these
+   * values fresh; the server doesn't try to validate or re-derive them.
+   */
+  dismissLine: publicProcedure
+    .input(
+      z.object({
+        chatId: z.string(),
+        kind: z.enum(["add", "del"]),
+        oldNo: z.number().int().nullable(),
+        newNo: z.number().int().nullable(),
+        text: z.string(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const lookup = lookupWorktree(input.chatId)
+      if (!lookup?.worktreePath) {
+        throw new Error("Chat has no worktree.")
+      }
+      const fileHeader = `--- a/${PRIMARY_ARTIFACT}\n+++ b/${PRIMARY_ARTIFACT}`
+
+      let hunkHeader: string
+      let body: string
+      if (input.kind === "add") {
+        if (input.newNo == null) {
+          throw new Error("Add line requires newNo.")
+        }
+        // -X,0 +Y,1 → "Y is the location of one new added line"
+        const oldAnchor = input.oldNo ?? Math.max(0, input.newNo - 1)
+        hunkHeader = `@@ -${oldAnchor},0 +${input.newNo},1 @@`
+        body = `+${input.text}`
+      } else {
+        if (input.oldNo == null) {
+          throw new Error("Del line requires oldNo.")
+        }
+        // -X,1 +Y,0 → "X is the location of one removed line"
+        const newAnchor = input.newNo ?? Math.max(0, input.oldNo - 1)
+        hunkHeader = `@@ -${input.oldNo},1 +${newAnchor},0 @@`
+        body = `-${input.text}`
+      }
+
+      const patch = `${fileHeader}\n${hunkHeader}\n${body}\n`
+      const tmp = join(tmpdir(), `backlot-line-${randomUUID()}.patch`)
+      await writeFile(tmp, patch, "utf-8")
+      try {
+        await execFileAsync(
+          "git",
+          [
+            "apply",
+            "--reverse",
+            "--unidiff-zero",
+            "--whitespace=nowarn",
+            tmp,
+          ],
+          { cwd: lookup.worktreePath },
+        )
+        return { dismissed: true }
+      } finally {
+        await unlink(tmp).catch(() => {})
+      }
+    }),
 })
 
 /**

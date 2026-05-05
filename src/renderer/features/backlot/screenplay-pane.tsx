@@ -122,6 +122,25 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
     rejectHunk.mutate({ chatId, hunkIndex })
   }
 
+  // Per-line dismiss — the finest granularity. Each + or - line in the
+  // diff gets a hover-revealed × button. Server synthesises a 1-line
+  // --unidiff-zero patch and applies it --reverse; other lines stay
+  // pending so the user can review them next.
+  const dismissLine = trpc.artifacts.dismissLine.useMutation({
+    onSettled: refreshAll,
+  })
+  const onDismissLine = (line: DiffLine) => {
+    if (!chatId) return
+    if (line.kind === "ctx") return
+    dismissLine.mutate({
+      chatId,
+      kind: line.kind,
+      oldNo: line.oldNo,
+      newNo: line.newNo,
+      text: line.text,
+    })
+  }
+
   const content = artifact.data?.content ?? null
   const exists = artifact.data?.exists ?? false
   const relativePath = artifact.data?.relativePath ?? "screenplay.fountain"
@@ -266,6 +285,8 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
               onAcceptHunk={onAcceptHunk}
               onRejectHunk={onRejectHunk}
               busyHunkIndex={busyHunkIndex}
+              perLineEnabled={diffStatus === "modified"}
+              onDismissLine={onDismissLine}
             />
               </div>
               <div className="min-h-0 overflow-auto">
@@ -279,6 +300,8 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
               onAcceptHunk={onAcceptHunk}
               onRejectHunk={onRejectHunk}
               busyHunkIndex={busyHunkIndex}
+              perLineEnabled={diffStatus === "modified"}
+              onDismissLine={onDismissLine}
             />
           )
         ) : viewMode === "preview" ? (
@@ -342,6 +365,8 @@ interface DiffSurfaceProps {
   onAcceptHunk: (index: number) => void
   onRejectHunk: (index: number) => void
   busyHunkIndex: number | null
+  perLineEnabled: boolean
+  onDismissLine: (line: DiffLine) => void
 }
 
 function DiffSurface({
@@ -350,6 +375,8 @@ function DiffSurface({
   onAcceptHunk,
   onRejectHunk,
   busyHunkIndex,
+  perLineEnabled,
+  onDismissLine,
 }: DiffSurfaceProps) {
   if (hunks.length === 0) {
     return <BlankCanvas />
@@ -406,7 +433,15 @@ function DiffSurface({
               <table className="w-full font-mono text-[13px] leading-6">
                 <tbody>
                   {hunk.lines.map((line, li) => (
-                    <DiffLineRow key={li} line={line} />
+                    <DiffLineRow
+                      key={li}
+                      line={line}
+                      onDismiss={
+                        perLineEnabled && line.kind !== "ctx"
+                          ? () => onDismissLine(line)
+                          : undefined
+                      }
+                    />
                   ))}
                 </tbody>
               </table>
@@ -418,7 +453,13 @@ function DiffSurface({
   )
 }
 
-function DiffLineRow({ line }: { line: DiffLine }) {
+function DiffLineRow({
+  line,
+  onDismiss,
+}: {
+  line: DiffLine
+  onDismiss?: () => void
+}) {
   // Dual-tone palette: dark text on tinted-light bg in light mode, light
   // text on tinted-dark bg in dark mode. Sigil column uses saturated
   // emerald-700/rose-700 (light) or emerald-300/rose-300 (dark) and is
