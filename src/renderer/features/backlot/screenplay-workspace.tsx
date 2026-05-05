@@ -21,10 +21,10 @@
  * surface (placeholder for now; CodeMirror in Phase D2).
  */
 
-import { type ReactNode } from "react"
+import { type ReactNode, useEffect } from "react"
 import { useAtom, useAtomValue } from "jotai"
 import { atomWithStorage } from "jotai/utils"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, MessageSquare } from "lucide-react"
 import { ScreenplayPane } from "./screenplay-pane"
 import {
   detailsSidebarOpenAtom,
@@ -64,27 +64,52 @@ export function ScreenplayWorkspace({
     ? RAIL_BASE_WIDTH + detailsWidth
     : RAIL_BASE_WIDTH
 
+  // Cmd+\ (or Ctrl+\) toggles the assistant rail. Single keystroke, mirrors
+  // VS Code / Cursor's secondary-sidebar shortcut. Saves the user from
+  // having to hunt for the tiny edge chevron when the rail is collapsed.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes("MAC")
+      const mod = isMac ? e.metaKey : e.ctrlKey
+      if (mod && e.key === "\\") {
+        e.preventDefault()
+        setRailOpen((v) => !v)
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [setRailOpen])
+
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Center — screenplay artifact */}
       <div className="flex-1 min-w-0 relative">
         <ScreenplayPane chatId={chatId} directionName={directionName} />
 
-        {/* Toggle handle (only visible when rail is closed). */}
+        {/* Show-assistant pill — vertical label on the right edge. Big enough
+            to find without hunting; clickable across the whole pill. */}
         {!railOpen && (
           <button
             type="button"
             onClick={() => setRailOpen(true)}
             className={cn(
-              "absolute top-1/2 -translate-y-1/2 right-0",
-              "flex items-center justify-center",
-              "w-6 h-16 rounded-l-md border border-r-0 border-border",
-              "bg-card hover:bg-secondary text-muted-foreground hover:text-foreground",
-              "transition-colors shadow-sm",
+              "absolute top-1/2 -translate-y-1/2 right-0 z-30",
+              "flex flex-col items-center justify-center gap-2",
+              "w-9 py-4 rounded-l-lg border border-r-0 border-border",
+              "bg-primary text-primary-foreground hover:opacity-90",
+              "shadow-lg transition-opacity",
             )}
+            title="Show assistant (Cmd+\\)"
             aria-label="Show assistant"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <MessageSquare className="h-4 w-4" />
+            <span
+              className="text-[10px] uppercase tracking-[0.18em] font-mono"
+              style={{ writingMode: "vertical-rl" }}
+            >
+              Assistant
+            </span>
+            <ChevronLeft className="h-3 w-3" />
           </button>
         )}
       </div>
@@ -99,6 +124,7 @@ export function ScreenplayWorkspace({
           {/* Rail header */}
           <div className="flex items-center justify-between h-9 px-3 border-b border-border bg-card/40 select-none shrink-0">
             <div className="flex items-center gap-2">
+              <MessageSquare className="h-3 w-3 text-muted-foreground" />
               <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 font-mono">
                 Assistant
               </span>
@@ -106,9 +132,15 @@ export function ScreenplayWorkspace({
             <button
               type="button"
               onClick={() => setRailOpen(false)}
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider",
+                "text-muted-foreground hover:text-foreground hover:bg-secondary",
+                "transition-colors",
+              )}
+              title="Hide assistant (Cmd+\\)"
               aria-label="Hide assistant"
             >
+              Hide
               <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
