@@ -392,7 +392,9 @@ export const chatsRouter = router({
 
       const parentGit = simpleGit(parent.worktreePath)
 
-      // 2. Resolve the fork commit.
+      // 2. Resolve the fork commit. Friendly errors so the user doesn't
+      //    see a raw git stack trace if they try to fork from a Direction
+      //    that has zero saved versions yet.
       let forkCommit: string
       if (input.atCommit) {
         try {
@@ -401,11 +403,17 @@ export const chatsRouter = router({
           ).trim()
         } catch {
           throw new Error(
-            `Could not resolve commit ${input.atCommit} on the parent Direction.`,
+            `Couldn't find that saved version on the current Direction. It may have been removed — try refreshing the History view.`,
           )
         }
       } else {
-        forkCommit = (await parentGit.revparse(["HEAD^{commit}"])).trim()
+        try {
+          forkCommit = (await parentGit.revparse(["HEAD^{commit}"])).trim()
+        } catch {
+          throw new Error(
+            "This Direction has no saved versions yet. Make at least one edit and accept it before trying another way.",
+          )
+        }
       }
 
       // 3. New worktree on a fresh branch off the fork commit. Use
@@ -469,28 +477,8 @@ export const chatsRouter = router({
         input.name?.trim() ||
         autoForkName(parent.name ?? "Direction")
 
-      const newChat = db
-        .insert(chats)
-        .values({
-          name: forkName,
-          projectId: parent.projectId,
-          worktreePath: newWorktreePath,
-          branch: newBranch,
-          baseBranch: parent.branch ?? parent.baseBranch ?? null,
-          parentChatId: parent.id,
-          forkedAtCommit: forkCommit,
-          forkedAtMessageIndex: inheritedMessageCount,
-          directionColor,
-        })
-        .returning()
-        .get()
-
-      // 5. Clone every parent sub-chat into the new chat. Messages are
-      //    truncated to `inheritedMessageCount` from the most-recent
-      //    sub-chat (the active conversation); other sub-chats are
-      //    copied 1:1 since they represent parallel modes (plan vs
-      //    agent). sessionId/streamId are nulled so the agent boots a
-      //    fresh SDK session in the new worktree.
+      // Read the parent's sub-chats outside the transaction (faster path:
+      // big JSON fields don't need to lock the DB while we slice them).
       const parentSubChats = db
         .select()
         .from(subChats)
@@ -499,33 +487,77 @@ export const chatsRouter = router({
         .all()
       const latestSubChatId = parentSubChats[0]?.id
 
-      for (const sc of parentSubChats) {
-        let inheritedMessages = sc.messages
-        if (sc.id === latestSubChatId) {
-          try {
-            const arr = JSON.parse(sc.messages) as unknown[]
-            if (Array.isArray(arr)) {
-              inheritedMessages = JSON.stringify(
-                arr.slice(0, inheritedMessageCount),
-              )
+      // 4 + 5. Atomic DB writes: the new chat row + every cloned sub-chat
+      //        commit together or roll back together. Without this, a
+      //        crash between the chat insert and a later sub-chat insert
+      //        would leave an orphan chat row pointing at the new
+      //        worktree. If the transaction throws, we clean up the
+      //        worktree below in the catch block so we don't leak disk.
+      let newChat: typeof chats.$inferSelect
+      try {
+        newChat = db.transaction((tx) => {
+          const created = tx
+            .insert(chats)
+            .values({
+              name: forkName,
+              projectId: parent.projectId,
+              worktreePath: newWorktreePath,
+              branch: newBranch,
+              baseBranch: parent.branch ?? parent.baseBranch ?? null,
+              parentChatId: parent.id,
+              forkedAtCommit: forkCommit,
+              forkedAtMessageIndex: inheritedMessageCount,
+              directionColor,
+            })
+            .returning()
+            .get()
+
+          for (const sc of parentSubChats) {
+            let inheritedMessages = sc.messages
+            if (sc.id === latestSubChatId) {
+              try {
+                const arr = JSON.parse(sc.messages) as unknown[]
+                if (Array.isArray(arr)) {
+                  inheritedMessages = JSON.stringify(
+                    arr.slice(0, inheritedMessageCount),
+                  )
+                }
+              } catch (err) {
+                console.warn(
+                  "[forkDirection] failed to slice parent messages, copying as-is:",
+                  err,
+                )
+              }
             }
-          } catch (err) {
-            console.warn(
-              "[forkDirection] failed to slice parent messages, copying as-is:",
-              err,
-            )
+            tx.insert(subChats)
+              .values({
+                chatId: created.id,
+                mode: sc.mode,
+                messages: inheritedMessages,
+                sessionId: null,
+                streamId: null,
+                name: sc.name,
+              })
+              .run()
           }
+          return created
+        })
+      } catch (err) {
+        // DB writes rolled back. The worktree we created in step 3 is now
+        // orphaned on disk — remove it so we don't leak. If removal also
+        // fails the user can clean it up manually; the original error
+        // is what they actually need to see.
+        try {
+          const { removeWorktree } = await import("../../git/worktree")
+          await removeWorktree(parentRepoPath, newWorktreePath)
+        } catch (cleanupErr) {
+          console.warn(
+            "[forkDirection] cleanup of orphan worktree failed — manual removal may be needed:",
+            newWorktreePath,
+            cleanupErr,
+          )
         }
-        db.insert(subChats)
-          .values({
-            chatId: newChat.id,
-            mode: sc.mode,
-            messages: inheritedMessages,
-            sessionId: null,
-            streamId: null,
-            name: sc.name,
-          })
-          .run()
+        throw err
       }
 
       // 6. Lock in the screenplay baseline on the new worktree (idempotent).
