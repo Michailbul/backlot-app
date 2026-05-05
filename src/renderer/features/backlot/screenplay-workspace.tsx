@@ -22,15 +22,20 @@
  */
 
 import { type ReactNode } from "react"
-import { useAtom } from "jotai"
+import { useAtom, useAtomValue } from "jotai"
 import { atomWithStorage } from "jotai/utils"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { ScreenplayPane } from "./screenplay-pane"
+import {
+  detailsSidebarOpenAtom,
+  detailsSidebarWidthAtom,
+} from "../details-sidebar/atoms"
 import { cn } from "../../lib/utils"
 
 const ASSISTANT_RAIL_OPEN_ATOM = atomWithStorage("backlot:assistant-rail-open", true)
 
-const RAIL_WIDTH = 420 // px — wide enough for chat bubbles + tool chips, narrow enough that the screenplay still breathes
+const RAIL_BASE_WIDTH = 420 // px — wide enough for chat bubbles + tool chips, narrow enough that the screenplay still breathes
+const DETAILS_FALLBACK_WIDTH = 500 // matches detailsSidebarWidthAtom default in case the atom isn't initialised yet
 
 interface ScreenplayWorkspaceProps {
   chatId: string | null
@@ -45,6 +50,19 @@ export function ScreenplayWorkspace({
   assistant,
 }: ScreenplayWorkspaceProps) {
   const [railOpen, setRailOpen] = useAtom(ASSISTANT_RAIL_OPEN_ATOM)
+
+  // When the chat opens its inline DetailsSidebar (Workspace / Branch /
+  // Path / Changes / MCP), it demands ~500px of its own. With the rail
+  // pinned at 420px the details column overflows the right edge of the
+  // window. Subscribe to both atoms so the rail grows when details opens
+  // and shrinks back when it closes — same behaviour as 1code's original
+  // single-column layout, just driven by the atoms instead of being
+  // implicit in the flex tree.
+  const isDetailsOpen = useAtomValue(detailsSidebarOpenAtom)
+  const detailsWidth = useAtomValue(detailsSidebarWidthAtom) ?? DETAILS_FALLBACK_WIDTH
+  const railWidth = isDetailsOpen
+    ? RAIL_BASE_WIDTH + detailsWidth
+    : RAIL_BASE_WIDTH
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -71,11 +89,12 @@ export function ScreenplayWorkspace({
         )}
       </div>
 
-      {/* Right rail — assistant. Resizable later; fixed width for v1. */}
+      {/* Right rail — assistant. Width grows when the chat's inline Details
+          panel is open so it doesn't overflow off the right edge of the window. */}
       {railOpen && (
         <aside
-          className="border-l border-border bg-background/40 relative shrink-0 flex flex-col"
-          style={{ width: RAIL_WIDTH }}
+          className="border-l border-border bg-background/40 relative shrink-0 flex flex-col transition-[width] duration-150 ease-out"
+          style={{ width: railWidth }}
         >
           {/* Rail header */}
           <div className="flex items-center justify-between h-9 px-3 border-b border-border bg-card/40 select-none shrink-0">
