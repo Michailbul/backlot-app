@@ -486,7 +486,7 @@ function DiffLineRow({
         : "text-foreground/80"
 
   return (
-    <tr className={cn(bg, "hover:bg-foreground/[0.04]")}>
+    <tr className={cn(bg, "group hover:bg-foreground/[0.04]")}>
       <td className="select-none w-10 text-right pr-2 align-top text-[10px] text-muted-foreground/60 font-mono tabular-nums pt-0.5">
         {line.oldNo ?? ""}
       </td>
