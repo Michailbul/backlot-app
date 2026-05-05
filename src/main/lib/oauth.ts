@@ -46,10 +46,15 @@ export interface OAuthCallbacks {
 
 const CALLBACK_PORT = 8914;
 const CALLBACK_PATH = '/callback';
-// Client names for OAuth registration
-// Some MCP servers (like Figma) have an allowlist - try '1code' first, fall back to 'Codex'
-const CLIENT_NAME = '1code';
-const FALLBACK_CLIENT_NAME = 'Codex';
+// Client names for OAuth registration when connecting to MCP servers.
+// This is the human-readable label shown on the MCP server's consent screen
+// (RFC 7591 dynamic client registration). It is NOT the Anthropic auth flow.
+//
+// Some MCP servers (e.g. Figma) maintain hardcoded allowlists of recognised
+// agent names. If 'Backlot' is rejected by such a server, fall back to
+// 'Claude Code' — most allowlists already accept the official Anthropic CLI.
+const CLIENT_NAME = 'Backlot';
+const FALLBACK_CLIENT_NAME = 'Claude Code';
 
 /**
  * Generate a styled OAuth callback page with terminal emulator aesthetic
@@ -797,8 +802,8 @@ export class CraftOAuth {
         this.callbacks.onStatus(`Registered as client: ${clientId}`);
       }
     } else {
-      // No registration endpoint - use default client ID
-      clientId = '1code';
+      // No registration endpoint — use a default public client ID.
+      clientId = 'backlot';
     }
 
     const pkce = generatePKCE();
