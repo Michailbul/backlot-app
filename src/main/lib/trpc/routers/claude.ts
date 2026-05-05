@@ -18,6 +18,7 @@ import {
 import { getProjectMcpServers, GLOBAL_MCP_PATH, readClaudeConfig, removeMcpServerConfig, resolveProjectPathFromWorktree, updateClaudeConfigAtomic, updateMcpServerConfig, writeClaudeConfig, type McpServerConfig } from "../../claude-config"
 import { discoverPluginMcpServers } from "../../plugins"
 import { getEnabledPlugins, getApprovedPluginMcpServers } from "./claude-settings"
+import { getExistingClaudeCredentials } from "../../claude-token"
 import { chats, claudeCodeCredentials, getDatabase, subChats } from "../../db"
 import { createRollbackStash } from "../../git/stash"
 import { ensureMcpTokensFresh, fetchMcpTools, fetchMcpToolsStdio, getMcpAuthStatus, startMcpOAuth, type McpToolInfo } from "../../mcp-auth"
@@ -125,10 +126,27 @@ function decryptToken(encrypted: string): string {
 }
 
 /**
- * Get Claude Code OAuth token from local SQLite
- * Returns null if not connected
+ * Get a Claude Code OAuth access token to feed the Claude Agent SDK as
+ * CLAUDE_CODE_OAUTH_TOKEN.
+ *
+ * Backlot's auth model is Anthropic-direct: the bundled `claude` binary
+ * writes credentials to the OS keychain (macOS Keychain / Windows
+ * Credential Manager / libsecret) when the user runs `claude /login`. We
+ * read straight from there. Falls back to the legacy claudeCodeCredentials
+ * SQLite table for compatibility with imported 1code databases.
  */
 function getClaudeCodeToken(): string | null {
+  // Primary: system-keychain credential set by `claude /login`.
+  try {
+    const keychain = getExistingClaudeCredentials()
+    if (keychain?.accessToken) {
+      return keychain.accessToken
+    }
+  } catch (error) {
+    console.warn("[claude] Keychain read failed, falling back to local DB:", error)
+  }
+
+  // Fallback: legacy SQLite credential (upstream 1code's 21st.dev path).
   try {
     const db = getDatabase()
     const cred = db
@@ -137,16 +155,15 @@ function getClaudeCodeToken(): string | null {
       .where(eq(claudeCodeCredentials.id, "default"))
       .get()
 
-    if (!cred?.oauthToken) {
-      console.log("[claude] No Claude Code credentials found")
-      return null
+    if (cred?.oauthToken) {
+      return decryptToken(cred.oauthToken)
     }
-
-    return decryptToken(cred.oauthToken)
   } catch (error) {
     console.error("[claude] Error getting Claude Code token:", error)
-    return null
   }
+
+  console.log("[claude] No Claude Code credentials found")
+  return null
 }
 
 // Dynamic import for ESM module - CACHED to avoid re-importing on every message
