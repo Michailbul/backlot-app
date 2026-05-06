@@ -34,8 +34,11 @@ import {
   X,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useAtomValue } from "jotai"
 import { trpc } from "../../lib/trpc"
 import { cn } from "../../lib/utils"
+import { activeEntityAtom } from "./atoms"
+import { ShotPromptsSurface } from "./shot-prompts-surface"
 
 // Local mirror of the DiffHunk shape from artifacts.ts. Keeping it as a
 // type-only declaration here avoids a renderer→main-process import cycle.
@@ -269,6 +272,23 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
   const hasPending = diffStatus === "modified" || diffStatus === "untracked"
 
   const stats = useMemo(() => computeStats(content), [content])
+
+  // Active entity drives which surface this pane renders. For shot
+  // entities we swap the whole pane to the prompts surface — the
+  // screenplay editor / diff / outline tools below don't apply to a
+  // prompt-thread file, and the prompts UI brings its own header.
+  const activeEntity = useAtomValue(activeEntityAtom)
+  if (activeEntity?.kind === "shot") {
+    return (
+      <div className="flex flex-col h-full w-full bg-background overflow-hidden">
+        <ShotPromptsSurface
+          shotLabel={activeEntity.label}
+          shotPath={activeEntity.path}
+          isDemoMode={activeEntity.path.startsWith("__demo")}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full w-full bg-background overflow-hidden">

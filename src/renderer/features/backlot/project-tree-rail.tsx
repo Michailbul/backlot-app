@@ -96,7 +96,46 @@ export function ProjectTreeRail() {
       <div className="flex-1 min-h-0 overflow-auto">
         <ProjectTreeContent />
       </div>
+
+      {/* Footer: temporary demo trigger so the per-shot Prompts UI is
+          reachable before E1.9 wires real shot files. Disappears once
+          we ship the file backend. */}
+      <DemoPromptsTrigger />
     </aside>
+  )
+}
+
+function DemoPromptsTrigger() {
+  const [active, setActive] = useAtom(activeEntityAtom)
+  const isDemoActive =
+    active?.kind === "shot" && active.path.startsWith("__demo")
+  return (
+    <div className="border-t border-border p-2 shrink-0">
+      <button
+        type="button"
+        onClick={() =>
+          setActive({
+            kind: "shot",
+            sceneId: "__demo-scene",
+            id: "__demo-shot",
+            label: "Shot 01 — Wide establishing (demo)",
+            path: "__demo/scenes/01-opening/shots/shot-01",
+          } as ActiveEntity)
+        }
+        className={cn(
+          "w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-[11px] font-medium",
+          "border border-dashed border-border",
+          "transition-colors",
+          isDemoActive
+            ? "bg-primary/10 text-primary border-primary/40"
+            : "text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-primary/5",
+        )}
+        title="Preview the per-shot Prompts UI with mock data — until E1.9 wires real prompt files"
+      >
+        <Sparkles className="h-3 w-3" />
+        Preview Prompts UI
+      </button>
+    </div>
   )
 }
 
