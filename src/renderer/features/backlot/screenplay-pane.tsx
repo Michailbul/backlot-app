@@ -38,7 +38,6 @@ import { useAtomValue } from "jotai"
 import { trpc } from "../../lib/trpc"
 import { cn } from "../../lib/utils"
 import { activeEntityAtom } from "./atoms"
-import { ShotPromptsSurface } from "./shot-prompts-surface"
 
 // Local mirror of the DiffHunk shape from artifacts.ts. Keeping it as a
 // type-only declaration here avoids a renderer→main-process import cycle.
@@ -273,22 +272,14 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
 
   const stats = useMemo(() => computeStats(content), [content])
 
-  // Active entity drives which surface this pane renders. For shot
-  // entities we swap the whole pane to the prompts surface — the
-  // screenplay editor / diff / outline tools below don't apply to a
-  // prompt-thread file, and the prompts UI brings its own header.
-  const activeEntity = useAtomValue(activeEntityAtom)
-  if (activeEntity?.kind === "shot") {
-    return (
-      <div className="flex flex-col h-full w-full bg-background overflow-hidden">
-        <ShotPromptsSurface
-          shotLabel={activeEntity.label}
-          shotPath={activeEntity.path}
-          isDemoMode={activeEntity.path.startsWith("__demo")}
-        />
-      </div>
-    )
-  }
+  // Active entity is now read at the workspace level — when it's a
+  // scene or shot, the workspace renders ScenePromptsPanel BELOW this
+  // pane in parallel, instead of swapping the whole pane out. The
+  // screenplay editor stays visible the whole time. This pane just
+  // renders whatever screenplay file the worktree has at the moment;
+  // future E1.4 will route the artifact path through `entityPath`.
+  const _activeEntity = useAtomValue(activeEntityAtom)
+  void _activeEntity // referenced so ESLint doesn't drop the import while the panel matures
 
   return (
     <div className="flex flex-col h-full w-full bg-background overflow-hidden">

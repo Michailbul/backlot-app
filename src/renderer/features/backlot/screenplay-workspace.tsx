@@ -21,13 +21,15 @@
  * surface (placeholder for now; CodeMirror in Phase D2).
  */
 
-import { type ReactNode, useEffect } from "react"
+import { type ReactNode, useEffect, useRef } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { atomWithStorage } from "jotai/utils"
 import { ChevronLeft, ChevronRight, GitBranch, MessageSquare, Plus, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { ProjectTreeRail } from "./project-tree-rail"
 import { ScreenplayPane } from "./screenplay-pane"
+import { ScenePromptsPanel, shouldShowPromptsPanel } from "./scene-prompts-panel"
+import { activeEntityAtom, promptsPanelHeightPctAtom, promptsPanelOpenAtom } from "./atoms"
 import {
   detailsSidebarOpenAtom,
   detailsSidebarWidthAtom,
@@ -89,17 +91,14 @@ export function ScreenplayWorkspace({
       {/* Left rail — project tree navigator. Collapsible. */}
       <ProjectTreeRail />
 
-      {/* Center — lineage breadcrumb (when forked) + screenplay.
-          Top "Direction tabs" were removed because they duplicated the
-          existing 1code workspaces sidebar on the left — every chat
-          (root or fork) already appears there. The fork action moved
-          into the chat rail header where the user said it belonged
-          ("forking lives in the main chat"). */}
+      {/* Center — lineage breadcrumb + screenplay (top) + prompts panel
+          (bottom, only when active entity is a scene or shot). The
+          panel is a sibling, not a replacement: the screenplay stays
+          editable while the user iterates on prompts that support it.
+          Vertical split with a persisted height percentage. */}
       <div className="flex-1 min-w-0 relative flex flex-col">
         <LineageBreadcrumb />
-        <div className="flex-1 min-h-0">
-          <ScreenplayPane chatId={chatId} directionName={directionName} />
-        </div>
+        <CenterSplit chatId={chatId} directionName={directionName} />
 
         {/* Show-assistant pill — vertical label on the right edge. Big enough
             to find without hunting; clickable across the whole pill. */}
@@ -166,6 +165,96 @@ export function ScreenplayWorkspace({
           {/* Chat — existing 1code ChatView, unchanged. */}
           <div className="flex-1 min-h-0 overflow-hidden">{assistant}</div>
         </aside>
+      )}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// CenterSplit — vertical split between the screenplay editor (top) and
+// the prompts panel (bottom). The split appears only when the active
+// entity is a scene or shot; otherwise the screenplay takes the full
+// height. Resizable by dragging the divider; the height percentage is
+// persisted via promptsPanelHeightPctAtom.
+// ────────────────────────────────────────────────────────────────────────
+
+interface CenterSplitProps {
+  chatId: string | null
+  directionName?: string | null
+}
+
+function CenterSplit({ chatId, directionName }: CenterSplitProps) {
+  const active = useAtomValue(activeEntityAtom)
+  const panelOpen = useAtomValue(promptsPanelOpenAtom)
+  const [heightPct, setHeightPct] = useAtom(promptsPanelHeightPctAtom)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const isDraggingRef = useRef(false)
+
+  // Drag-to-resize: mousedown on divider → mousemove updates pct →
+  // mouseup commits. Clamp between 18% and 70% so neither pane vanishes.
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current || !containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const totalH = rect.height
+      if (totalH === 0) return
+      const fromTop = e.clientY - rect.top
+      const screenplayPct = (fromTop / totalH) * 100
+      const promptsPct = 100 - screenplayPct
+      const clamped = Math.max(18, Math.min(70, promptsPct))
+      setHeightPct(Math.round(clamped))
+    }
+    const onUp = () => {
+      if (!isDraggingRef.current) return
+      isDraggingRef.current = false
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+    }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+    return () => {
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+    }
+  }, [setHeightPct])
+
+  const showPanel = shouldShowPromptsPanel(active)
+  const panelHeight = panelOpen ? heightPct : 0
+
+  return (
+    <div ref={containerRef} className="flex-1 min-h-0 flex flex-col">
+      {/* Top — screenplay (always visible) */}
+      <div className="min-h-0 overflow-hidden" style={{ flex: showPanel ? `1 1 ${100 - panelHeight}%` : "1 1 100%" }}>
+        <ScreenplayPane chatId={chatId} directionName={directionName} />
+      </div>
+
+      {showPanel && (
+        <>
+          {/* Resizable divider — visible 6px hit area, 1px painted line */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              isDraggingRef.current = true
+              document.body.style.cursor = "row-resize"
+              document.body.style.userSelect = "none"
+            }}
+            className={cn(
+              "shrink-0 h-1.5 cursor-row-resize relative group",
+              "border-y border-border",
+              "hover:bg-primary/20 transition-colors",
+            )}
+            title="Drag to resize"
+          >
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-border group-hover:bg-primary/50 transition-colors" />
+          </div>
+
+          {/* Bottom — prompts panel */}
+          <div className="min-h-0 overflow-hidden" style={{ flex: panelOpen ? `1 1 ${panelHeight}%` : "0 0 36px" }}>
+            <ScenePromptsPanel />
+          </div>
+        </>
       )}
     </div>
   )

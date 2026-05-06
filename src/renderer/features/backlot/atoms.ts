@@ -70,3 +70,20 @@ export const projectTreeOpenAtom = atomWithStorage<boolean>(
   "backlot:project-tree-open",
   true,
 )
+
+// ────────────────────────────────────────────────────────────────────────
+// Prompts panel (bottom of the center pane). Visible only when the
+// active entity is a scene or a shot — those are the only entities
+// where "the prompts that support this thing" makes sense. Persisted
+// height as a percentage of the center pane so the user's layout
+// preference survives reloads.
+// ────────────────────────────────────────────────────────────────────────
+
+export const promptsPanelOpenAtom = atomWithStorage<boolean>(
+  "backlot:prompts-panel-open",
+  true,
+)
+export const promptsPanelHeightPctAtom = atomWithStorage<number>(
+  "backlot:prompts-panel-height-pct",
+  40,
+)

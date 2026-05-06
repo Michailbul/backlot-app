@@ -107,33 +107,56 @@ export function ProjectTreeRail() {
 
 function DemoPromptsTrigger() {
   const [active, setActive] = useAtom(activeEntityAtom)
-  const isDemoActive =
+  const isDemoSceneActive =
+    active?.kind === "scene" && active.path.startsWith("__demo")
+  const isDemoShotActive =
     active?.kind === "shot" && active.path.startsWith("__demo")
   return (
-    <div className="border-t border-border p-2 shrink-0">
+    <div className="border-t border-border p-2 shrink-0 space-y-1">
+      <button
+        type="button"
+        onClick={() =>
+          setActive({
+            kind: "scene",
+            id: "01-opening",
+            label: "Opening (demo)",
+            path: "__demo/scenes/01-opening/scene.fountain",
+          } as ActiveEntity)
+        }
+        className={cn(
+          "w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-[11px] font-medium",
+          "border border-dashed border-border transition-colors",
+          isDemoSceneActive
+            ? "bg-primary/10 text-primary border-primary/40"
+            : "text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-primary/5",
+        )}
+        title="Preview the parallel scene + prompts panel with mock data"
+      >
+        <Sparkles className="h-3 w-3" />
+        Preview: Scene + Prompts
+      </button>
       <button
         type="button"
         onClick={() =>
           setActive({
             kind: "shot",
-            sceneId: "__demo-scene",
-            id: "__demo-shot",
-            label: "Shot 01 — Wide establishing (demo)",
+            sceneId: "01-opening",
+            id: "shot-01",
+            label: "Shot 01",
             path: "__demo/scenes/01-opening/shots/shot-01",
           } as ActiveEntity)
         }
         className={cn(
           "w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-[11px] font-medium",
-          "border border-dashed border-border",
-          "transition-colors",
-          isDemoActive
+          "border border-dashed border-border transition-colors",
+          isDemoShotActive
             ? "bg-primary/10 text-primary border-primary/40"
             : "text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-primary/5",
         )}
-        title="Preview the per-shot Prompts UI with mock data — until E1.9 wires real prompt files"
+        title="Same as above, but filtered to Shot 01's prompts"
       >
         <Sparkles className="h-3 w-3" />
-        Preview Prompts UI
+        Preview: Shot 01 (filtered)
       </button>
     </div>
   )
