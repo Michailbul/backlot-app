@@ -85,9 +85,13 @@ export function ScreenplayWorkspace({
 
   return (
     <div className="flex h-full w-full overflow-hidden">
-      {/* Center — Direction tabs + lineage breadcrumb + screenplay */}
+      {/* Center — lineage breadcrumb (when forked) + screenplay.
+          Top "Direction tabs" were removed because they duplicated the
+          existing 1code workspaces sidebar on the left — every chat
+          (root or fork) already appears there. The fork action moved
+          into the chat rail header where the user said it belonged
+          ("forking lives in the main chat"). */}
       <div className="flex-1 min-w-0 relative flex flex-col">
-        <DirectionTabs />
         <LineageBreadcrumb />
         <div className="flex-1 min-h-0">
           <ScreenplayPane chatId={chatId} directionName={directionName} />
@@ -129,27 +133,30 @@ export function ScreenplayWorkspace({
           style={{ width: railWidth }}
         >
           {/* Rail header */}
-          <div className="flex items-center justify-between h-9 px-3 border-b border-border bg-card/40 select-none shrink-0">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-3 w-3 text-muted-foreground" />
+          <div className="flex items-center justify-between gap-2 h-9 px-3 border-b border-border bg-card/40 select-none shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
               <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 font-mono">
                 Assistant
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setRailOpen(false)}
-              className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider",
-                "text-muted-foreground hover:text-foreground hover:bg-secondary",
-                "transition-colors",
-              )}
-              title="Hide assistant (Cmd+\\)"
-              aria-label="Hide assistant"
-            >
-              Hide
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <ForkActiveButton />
+              <button
+                type="button"
+                onClick={() => setRailOpen(false)}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider",
+                  "text-muted-foreground hover:text-foreground hover:bg-secondary",
+                  "transition-colors",
+                )}
+                title="Hide assistant (Cmd+\\)"
+                aria-label="Hide assistant"
+              >
+                Hide
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Chat — existing 1code ChatView, unchanged. */}
@@ -160,26 +167,9 @@ export function ScreenplayWorkspace({
   )
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// Direction sidetabs — the always-visible switcher at the top of the
-// screenplay center pane.
-//
-// Each tab represents one Direction (a chat tied to a worktree). Active
-// tab is fully filled; inactive tabs show only the colour stripe + name
-// + tiny lineage hint ("↳ from main"). The right-most "+ Try another
-// way" button forks the active Direction at HEAD and switches to the
-// new fork.
-//
-// State source of truth:
-//   - selectedAgentChatIdAtom — which Direction is currently active
-//   - selectedProjectAtom     — scopes the directionsForProject query
-//
-// The fork mutation runs `forkDirection` server-side (atomic DB writes
-// + cleanup-on-failure), then sets the active chat id to the new chat.
-// The screenplay pane + chat view both react to that atom change and
-// load the new worktree's content automatically.
-// ────────────────────────────────────────────────────────────────────────
-
+// Stable hash → palette index. Lets pre-migration chats with NULL
+// directionColor get a deterministic colour without a backfill migration.
+// Used by the lineage breadcrumb's parent-chain dots.
 const FALLBACK_PALETTE = [
   "#F26157",
   "#79B791",
@@ -192,137 +182,61 @@ const FALLBACK_PALETTE = [
 ] as const
 
 function fallbackColor(chatId: string): string {
-  // Stable hash → index. Lets pre-migration chats with NULL color get a
-  // deterministic colour without a backfill migration.
   let h = 0
   for (let i = 0; i < chatId.length; i++) h = (h * 31 + chatId.charCodeAt(i)) | 0
   return FALLBACK_PALETTE[Math.abs(h) % FALLBACK_PALETTE.length]
 }
 
-function DirectionTabs() {
-  const project = useAtomValue(selectedProjectAtom)
-  const [activeChatId, setActiveChatId] = useAtom(selectedAgentChatIdAtom)
+// ────────────────────────────────────────────────────────────────────────
+// ForkActiveButton — sits in the chat rail header (next to "Hide").
+//
+// The user said "forking lives in the main chat", so this is the
+// canonical place to trigger a fork. The new chat appears in the
+// existing 1code workspaces sidebar on the left automatically (since
+// chats.list returns every chat in the project), and we also flip the
+// active chat to it so the screenplay + assistant immediately reflect
+// the new Direction.
+// ────────────────────────────────────────────────────────────────────────
+function ForkActiveButton() {
+  const activeChatId = useAtomValue(selectedAgentChatIdAtom)
   const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom)
-
-  const directions = trpc.chats.directionsForProject.useQuery(
-    { projectId: project?.id ?? "" },
-    {
-      enabled: !!project?.id,
-      // Refetch on a slow cadence — directions only change on fork or
-      // rename, neither of which is frequent. We also explicitly
-      // invalidate after fork() succeeds so users see the new tab
-      // immediately.
-      refetchInterval: 5000,
-      refetchOnWindowFocus: true,
-    },
-  )
 
   const fork = trpc.chats.forkDirection.useMutation({
     onSuccess: (newChat) => {
       setSelectedChatId(newChat.id)
-      directions.refetch()
-      toast.success(`Forked into "${newChat.name}"`)
+      toast.success(`Forked into "${newChat.name ?? "Untitled"}"`)
     },
     onError: (err) => {
       toast.error(err.message || "Couldn't fork. Try again.")
     },
   })
 
-  const onForkActive = () => {
+  const onClick = () => {
     if (!activeChatId) return
     fork.mutate({ fromChatId: activeChatId })
   }
 
-  if (!project?.id) return null
-
-  // Build a parent-name lookup so each tab can show "↳ from <parent>".
-  const directionsList = directions.data ?? []
-  const byId = new Map(directionsList.map((d) => [d.id, d]))
-
   return (
-    <div className="flex items-stretch gap-px h-9 px-2 border-b border-border bg-card/30 shrink-0 overflow-x-auto select-none">
-      {directionsList.map((d) => {
-        const isActive = d.id === activeChatId
-        const color = d.directionColor || fallbackColor(d.id)
-        const parent = d.parentChatId ? byId.get(d.parentChatId) : null
-        return (
-          <button
-            key={d.id}
-            type="button"
-            onClick={() => setActiveChatId(d.id)}
-            className={cn(
-              "group relative flex items-center gap-2 px-3 my-1 rounded-md text-xs",
-              "border transition-colors shrink-0 max-w-[280px]",
-              isActive
-                ? "border-border bg-background shadow-sm"
-                : "border-transparent bg-transparent hover:bg-secondary/60",
-            )}
-            title={
-              parent
-                ? `Forked from "${parent.name ?? "Untitled"}"`
-                : "Root Direction"
-            }
-          >
-            {/* Color stripe */}
-            <span
-              className={cn(
-                "w-1 h-4 rounded-sm shrink-0",
-                isActive ? "" : "opacity-60",
-              )}
-              style={{ backgroundColor: color }}
-            />
-            <span
-              className={cn(
-                "truncate",
-                isActive
-                  ? "text-foreground font-medium"
-                  : "text-muted-foreground group-hover:text-foreground/80",
-              )}
-            >
-              {d.name ?? "Untitled"}
-            </span>
-            {parent && (
-              <span
-                className={cn(
-                  "text-[10px] font-mono tabular-nums shrink-0",
-                  isActive
-                    ? "text-muted-foreground/70"
-                    : "text-muted-foreground/50",
-                )}
-                title={`Forked from ${parent.name}`}
-              >
-                ↳ {parent.name?.slice(0, 14) ?? "?"}
-              </span>
-            )}
-          </button>
-        )
-      })}
-
-      {/* Spacer so the + button sits flush right when there's room. */}
-      <div className="flex-1 min-w-2" />
-
-      {/* "Try another way" — fork the active Direction at its current HEAD. */}
-      <button
-        type="button"
-        onClick={onForkActive}
-        disabled={!activeChatId || fork.isPending}
-        className={cn(
-          "flex items-center gap-1.5 my-1 px-2.5 rounded-md text-xs font-medium shrink-0",
-          "border border-dashed border-border",
-          "text-muted-foreground hover:text-primary hover:border-primary/60 hover:bg-primary/5",
-          "transition-colors",
-          "disabled:opacity-40 disabled:cursor-not-allowed",
-        )}
-        title="Fork the current Direction at its latest saved version"
-      >
-        {fork.isPending ? (
-          <Sparkles className="h-3 w-3 animate-pulse" />
-        ) : (
-          <Plus className="h-3 w-3" />
-        )}
-        Try another way
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!activeChatId || fork.isPending}
+      className={cn(
+        "flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider",
+        "text-muted-foreground hover:text-primary hover:bg-primary/10",
+        "transition-colors",
+        "disabled:opacity-40 disabled:cursor-not-allowed",
+      )}
+      title="Try another way — fork this Direction at its latest saved version"
+      aria-label="Try another way"
+    >
+      {fork.isPending ? (
+        <Sparkles className="h-3 w-3 animate-pulse" />
+      ) : (
+        <Plus className="h-3 w-3" />
+      )}
+      Fork
+    </button>
   )
 }
 
