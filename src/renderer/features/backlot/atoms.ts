@@ -72,18 +72,17 @@ export const projectTreeOpenAtom = atomWithStorage<boolean>(
 )
 
 // ────────────────────────────────────────────────────────────────────────
-// Prompts panel (bottom of the center pane). Visible only when the
-// active entity is a scene or a shot — those are the only entities
-// where "the prompts that support this thing" makes sense. Persisted
-// height as a percentage of the center pane so the user's layout
-// preference survives reloads.
+// View mode — the user's pipeline stage. Two distinct surfaces, NOT a
+// split. Screenwriting mode = the screenplay editor takes the whole
+// center; Prompts mode = a different surface (screenplay on the left
+// for reference, prompt text-blocks in the center, chat right). The
+// user toggles between them as a workflow shift, not as a layout
+// preference.
 // ────────────────────────────────────────────────────────────────────────
 
-export const promptsPanelOpenAtom = atomWithStorage<boolean>(
-  "backlot:prompts-panel-open",
-  true,
-)
-export const promptsPanelHeightPctAtom = atomWithStorage<number>(
-  "backlot:prompts-panel-height-pct",
-  40,
+export type ViewMode = "screenwriting" | "prompts"
+
+export const viewModeAtom = atomWithStorage<ViewMode>(
+  "backlot:view-mode",
+  "screenwriting",
 )
