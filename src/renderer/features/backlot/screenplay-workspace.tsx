@@ -29,7 +29,8 @@ import { toast } from "sonner"
 import { ProjectTreeRail } from "./project-tree-rail"
 import { ScreenplayPane } from "./screenplay-pane"
 import { PromptsModeView } from "./prompts-mode-view"
-import { viewModeAtom } from "./atoms"
+import { EntityEditor } from "./entity-editor"
+import { activeEntityAtom, viewModeAtom } from "./atoms"
 import { Pencil, Sparkles } from "lucide-react"
 import {
   detailsSidebarOpenAtom,
@@ -247,6 +248,33 @@ interface ModeAwareCenterProps {
 
 function ModeAwareCenter({ chatId, directionName }: ModeAwareCenterProps) {
   const mode = useAtomValue(viewModeAtom)
+  const active = useAtomValue(activeEntityAtom)
+
+  // Entity selection drives the surface. Click a character/location/world
+  // in the project tree → the EntityEditor takes the center pane and
+  // wires the content through entities.read / entities.write so the
+  // file is real on disk (and the agent can write to the same path).
+  if (
+    active &&
+    (active.kind === "world" ||
+      active.kind === "character" ||
+      active.kind === "location")
+  ) {
+    return (
+      <div className="h-full">
+        <EntityEditor />
+      </div>
+    )
+  }
+
+  // Scenes get the dedicated focus surface (script + prompt + refs).
+  if (active && (active.kind === "scene" || active.kind === "shot")) {
+    return <PromptsModeView />
+  }
+
+  // No entity selected → fall back to the legacy mode toggle (master
+  // screenplay editor in Screenwriting mode, prompts mock in Prompts
+  // mode).
   if (mode === "prompts") {
     return <PromptsModeView />
   }
