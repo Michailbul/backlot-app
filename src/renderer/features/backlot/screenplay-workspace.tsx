@@ -3,9 +3,9 @@
 /**
  * ScreenplayWorkspace — Backlot's two-column desktop layout.
  *
- * Replaces the upstream 1code "single-column chat" arrangement with
- * the screenwriter shape: the screenplay artifact dominates the
- * canvas, the assistant lives in a narrow right rail.
+ * Replaces the upstream "single-column chat" arrangement with the
+ * screenwriter shape: the screenplay artifact dominates the canvas,
+ * the assistant lives in a narrow right rail.
  *
  *   ┌─────────────────────────────────────────┬──────────────┐
  *   │                                         │              │
@@ -15,10 +15,10 @@
  *   │                                         │              │
  *   └─────────────────────────────────────────┴──────────────┘
  *
- * The right column accepts the existing 1code <ChatView /> as
- * children — every existing tRPC stream, mention, and slash command
- * keeps working untouched. The left column is the new screenplay
- * surface (placeholder for now; CodeMirror in Phase D2).
+ * The right column accepts the existing <ChatView /> as children —
+ * every existing tRPC stream, mention, and slash command keeps
+ * working untouched. The left column is the new screenplay surface
+ * (placeholder for now; CodeMirror in Phase D2).
  */
 
 import { type ReactNode, useEffect, useRef } from "react"
@@ -48,7 +48,7 @@ const DETAILS_FALLBACK_WIDTH = 500 // matches detailsSidebarWidthAtom default in
 interface ScreenplayWorkspaceProps {
   chatId: string | null
   directionName?: string | null
-  /** The existing 1code <ChatView /> goes here. */
+  /** The existing <ChatView /> goes here. */
   assistant: ReactNode
 }
 
@@ -63,9 +63,8 @@ export function ScreenplayWorkspace({
   // Path / Changes / MCP), it demands ~500px of its own. With the rail
   // pinned at 420px the details column overflows the right edge of the
   // window. Subscribe to both atoms so the rail grows when details opens
-  // and shrinks back when it closes — same behaviour as 1code's original
-  // single-column layout, just driven by the atoms instead of being
-  // implicit in the flex tree.
+  // and shrinks back when it closes — driven by the atoms instead of
+  // being implicit in the flex tree.
   const isDetailsOpen = useAtomValue(detailsSidebarOpenAtom)
   const detailsWidth = useAtomValue(detailsSidebarWidthAtom) ?? DETAILS_FALLBACK_WIDTH
   const railWidth = isDetailsOpen
@@ -169,7 +168,7 @@ export function ScreenplayWorkspace({
             </div>
           </div>
 
-          {/* Chat — existing 1code ChatView, unchanged. */}
+          {/* Chat — existing ChatView, unchanged. */}
           <div className="flex-1 min-h-0 overflow-hidden">{assistant}</div>
         </aside>
       )}
@@ -310,7 +309,7 @@ function fallbackColor(chatId: string): string {
 //
 // The user said "forking lives in the main chat", so this is the
 // canonical place to trigger a fork. The new chat appears in the
-// existing 1code workspaces sidebar on the left automatically (since
+// existing workspaces sidebar on the left automatically (since
 // chats.list returns every chat in the project), and we also flip the
 // active chat to it so the screenplay + assistant immediately reflect
 // the new Direction.

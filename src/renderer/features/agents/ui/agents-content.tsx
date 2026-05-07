@@ -961,7 +961,7 @@ export function AgentsContent() {
             <InboxView />
           ) : selectedChatId ? (
             // Backlot screenwriter shape: the screenplay artifact owns the
-            // canvas; the existing 1code <ChatView /> is preserved verbatim
+            // canvas; the existing <ChatView /> is preserved verbatim
             // and slotted into the assistant rail on the right.
             <ScreenplayWorkspace
               chatId={selectedChatId}
