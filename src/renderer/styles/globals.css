@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Darker+Grotesque:wght@500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Darker+Grotesque:wght@500;600;700&family=Courier+Prime:wght@400;700&display=swap");
 @import "./agents-styles.css";
 
 @source "../../../node_modules/streamdown/dist/*.js";
@@ -486,3 +486,247 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   pointer-events: auto;
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Backlot rich-prose editor (TipTap / ProseMirror). Mirrors the
+ * editorialComponents typography in src/renderer/features/backlot/
+ * markdown-preview.tsx so click-to-edit doesn't visually jolt.
+ *
+ * Sizing scale (font-size / line-height) — keep in lockstep with
+ * MarkdownPreview's editorialComponents:
+ *   h1   28px / 1.18   Darker Grotesque 600
+ *   h2   22px / 1.22   Darker Grotesque 600
+ *   h3   17px / 1.30   Darker Grotesque 600 + Coral nib
+ *   h4   11px / —      Mono uppercase
+ *   h5   13px / —      Inter 600
+ *   h6   12px / —      Mono uppercase muted
+ *   p    15px / 1.78   Inter 85% foreground
+ *   li   15px / 1.78   Inter, Coral marker
+ *   blockquote        Coral 2px left rule, italic
+ *   hr                hairline + Coral notch
+ *   code              JB Mono inline / block
+ * ──────────────────────────────────────────────────────────────────── */
+
+.rich-prose {
+  caret-color: hsl(var(--primary));
+}
+
+.rich-prose ::selection {
+  background: hsl(var(--primary) / 0.20);
+}
+
+.rich-prose > * + * {
+  margin-top: 0;
+}
+
+/* Headings */
+.rich-prose h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 28px;
+  line-height: 1.18;
+  letter-spacing: -0.012em;
+  color: hsl(var(--foreground));
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+.rich-prose h1:first-child { margin-top: 0; }
+
+.rich-prose h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.22;
+  letter-spacing: -0.008em;
+  color: hsl(var(--foreground));
+  margin-top: 2.25rem;
+  margin-bottom: 0.625rem;
+}
+.rich-prose h2:first-child { margin-top: 0; }
+
+.rich-prose h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.3;
+  letter-spacing: -0.004em;
+  color: hsl(var(--foreground));
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  position: relative;
+  padding-left: 18px;
+}
+.rich-prose h3:first-child { margin-top: 0; }
+.rich-prose h3::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.625em;
+  width: 10px;
+  height: 1.5px;
+  background: hsl(var(--primary));
+}
+
+.rich-prose h4 {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: hsl(var(--muted-foreground) / 0.85);
+  margin-top: 1.5rem;
+  margin-bottom: 0.375rem;
+}
+.rich-prose h4:first-child { margin-top: 0; }
+
+.rich-prose h5 {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  color: hsl(var(--foreground) / 0.85);
+  margin-top: 1.25rem;
+  margin-bottom: 0.25rem;
+}
+.rich-prose h5:first-child { margin-top: 0; }
+
+.rich-prose h6 {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--muted-foreground));
+  margin-top: 1rem;
+  margin-bottom: 0.25rem;
+}
+.rich-prose h6:first-child { margin-top: 0; }
+
+/* Paragraphs */
+.rich-prose p {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.78;
+  color: hsl(var(--foreground) / 0.85);
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.rich-prose p:first-child { margin-top: 0; }
+
+/* Lists */
+.rich-prose ul,
+.rich-prose ol {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.78;
+  color: hsl(var(--foreground) / 0.85);
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.25rem;
+}
+.rich-prose ul { list-style-type: disc; }
+.rich-prose ol { list-style-type: decimal; }
+.rich-prose ul > li,
+.rich-prose ol > li {
+  padding-left: 0.375rem;
+  margin-top: 0.1875rem;
+  margin-bottom: 0.1875rem;
+}
+.rich-prose ul > li::marker {
+  color: hsl(var(--primary) / 0.6);
+}
+.rich-prose ol > li::marker {
+  color: hsl(var(--primary) / 0.6);
+  font-weight: 500;
+}
+.rich-prose li > p {
+  margin: 0;
+  display: inline;
+}
+
+/* Inline marks */
+.rich-prose strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+.rich-prose em {
+  font-style: italic;
+  color: hsl(var(--foreground) / 0.9);
+}
+
+/* Blockquote */
+.rich-prose blockquote {
+  border-left: 2px solid hsl(var(--primary));
+  padding-left: 1.25rem;
+  margin: 1.25rem 0;
+  font-style: italic;
+  color: hsl(var(--foreground) / 0.8);
+  font-family: var(--font-body);
+}
+.rich-prose blockquote > p {
+  font-size: 15px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* Horizontal rule */
+.rich-prose hr {
+  border: 0;
+  margin: 2rem 0;
+  height: 1px;
+  background: hsl(var(--border) / 0.6);
+  position: relative;
+}
+
+/* Code — inline + block */
+.rich-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  background: hsl(var(--muted) / 0.7);
+  border: 1px solid hsl(var(--border) / 0.4);
+  color: hsl(var(--foreground) / 0.9);
+}
+.rich-prose pre {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 0.6);
+  border: 1px solid hsl(var(--border) / 0.6);
+  color: hsl(var(--foreground) / 0.9);
+  overflow-x: auto;
+}
+.rich-prose pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Links */
+.rich-prose a {
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--primary) / 0.6);
+  text-decoration: none;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+.rich-prose a:hover {
+  color: hsl(var(--primary));
+  border-bottom-color: hsl(var(--primary));
+}
+
+/* ProseMirror placeholder for empty-doc affordance */
+.rich-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: hsl(var(--muted-foreground) / 0.55);
+  font-style: italic;
+}
+
+/* Hide ProseMirror's default outline; we own focus via the parent */
+.rich-prose:focus { outline: none; }

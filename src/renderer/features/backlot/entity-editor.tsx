@@ -38,7 +38,14 @@ import {
 import { MarkdownIcon, CodeIcon } from "../../components/ui/icons"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip"
 import { Button } from "../../components/ui/button"
-import { MarkdownPreview } from "./markdown-preview"
+// MarkdownPreview is no longer used here — the editor now mounts a
+// SINGLE RichMarkdownEditor that toggles editable on click, instead
+// of swapping between two different DOM trees (which caused the
+// click-to-edit displacement bug). MarkdownPreview is still exported
+// from markdown-preview.tsx for any other callers that need it
+// (markdown rendering outside the entity-editor flow).
+import { RichMarkdownEditor } from "./rich-markdown-editor"
+import { FountainEditor } from "./fountain-editor"
 import { selectedAgentChatIdAtom, selectedProjectAtom } from "../agents/atoms"
 import { activeEntityAtom, type ActiveEntity } from "./atoms"
 import { trpc } from "../../lib/trpc"
@@ -110,11 +117,13 @@ function ActiveEntityFile({
     "idle",
   )
 
-  // View mode: rendered markdown preview vs. raw textarea editor.
-  // Markdown files default to "rendered"; fountain files keep "editor"
-  // because Fountain isn't really a presentation format — the writer
-  // wants to see the markup. Per-file (resets when the active entity
-  // changes), so opening a different file gives the appropriate default.
+  // View mode: rendered preview, rich (TipTap) editor, or source (raw
+  // textarea). Markdown files default to "rendered". Fountain files
+  // ALSO default to "rendered" — the FountainEditor renders a typeset
+  // screenplay page (Courier, scene caps, character indents) instead
+  // of the raw markup, which is what a working filmmaker expects. Raw
+  // .fountain markup is reachable via the Code toggle in the header.
+  // Per-file (resets on entity change).
   const isFountain =
     active.kind === "scene" ||
     active.kind === "main-script" ||
@@ -127,14 +136,15 @@ function ActiveEntityFile({
     active.kind === "act" ||
     active.kind === "shot" ||
     (active.kind === "file" && /\.(md|markdown|mdx)$/i.test(path))
-  const previewable = isMarkdown
-  const [viewMode, setViewMode] = useState<"rendered" | "editor">(
-    previewable ? "rendered" : "editor",
+  const previewable = isMarkdown || isFountain
+  type ViewMode = "rendered" | "rich" | "source"
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    previewable ? "rendered" : "source",
   )
   const editorTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   // When the active entity changes, reset to the appropriate default.
   useEffect(() => {
-    setViewMode(previewable ? "rendered" : "editor")
+    setViewMode(previewable ? "rendered" : "source")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
 
@@ -170,24 +180,48 @@ function ActiveEntityFile({
     )
   }
 
+  const handleBufferChange = useCallback(
+    (next: string) => {
+      setBuffer(next)
+      lastTypedRef.current = Date.now()
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(() => flush(next), AUTOSAVE_DEBOUNCE)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+
   const onChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const next = e.target.value
-    setBuffer(next)
-    lastTypedRef.current = Date.now()
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => flush(next), AUTOSAVE_DEBOUNCE)
+    handleBufferChange(e.target.value)
   }
 
-  // Click on the rendered preview swaps to edit mode and focuses the
-  // textarea — Notion's pattern. Blur (clicking outside) flushes any
-  // pending save and swaps back to preview when previewable. The user
-  // can also click the explicit Markdown/Code icon in the header.
-  const handleEnterEdit = useCallback(() => {
-    if (!previewable) return
-    setViewMode("editor")
-    // Focus on next tick so the textarea is mounted.
-    setTimeout(() => editorTextareaRef.current?.focus(), 0)
-  }, [previewable])
+  // Click on the rendered preview swaps to rich edit mode — Notion's
+  // pattern. Blur flushes any pending save and swaps back to preview.
+  // Source mode is reached only via the explicit toggle.
+  //
+  // Click coords are captured so the rich editor can drop the cursor
+  // exactly where the user clicked, instead of jumping to end-of-doc.
+  // Cleared when the user blurs back to preview so the next entry
+  // starts fresh.
+  //
+  // Fountain entities go through the same flow but their "edit" view
+  // is a Courier-styled raw textarea inside FountainEditor — there's
+  // no rich/source distinction since fountain markup IS the source.
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(
+    null,
+  )
+  const handleEnterEdit = useCallback(
+    (e?: { clientX: number; clientY: number }) => {
+      if (!previewable) return
+      if (e && typeof e.clientX === "number" && typeof e.clientY === "number") {
+        setFocusPoint({ x: e.clientX, y: e.clientY })
+      } else {
+        setFocusPoint(null)
+      }
+      setViewMode(isMarkdown ? "rich" : "source")
+    },
+    [isMarkdown, previewable],
+  )
 
   const handleEditorBlur = useCallback(() => {
     // Flush any debounced save immediately so the preview shows what
@@ -198,14 +232,22 @@ function ActiveEntityFile({
       flush(buffer)
     }
     if (previewable) setViewMode("rendered")
+    // Reset the click anchor so the next click-to-edit is what
+    // determines cursor placement (not a stale coordinate).
+    setFocusPoint(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewable, buffer])
 
+  // Toggle between "rendered/rich" and "source". For markdown files
+  // we cycle: rendered → source (raw) → rendered. Rich edit is reached
+  // by clicking on the rendered preview body, not by this toggle.
+  // For fountain files: rendered (typeset page) → source (raw fountain
+  // textarea) → rendered.
   const handleToggleViewMode = useCallback(() => {
     if (!previewable) return
     setViewMode((m) => {
-      if (m === "editor") {
-        // Leaving editor — flush.
+      if (m === "source") {
+        // Leaving source — flush + go back to rendered preview.
         if (saveTimerRef.current) {
           clearTimeout(saveTimerRef.current)
           saveTimerRef.current = null
@@ -213,9 +255,9 @@ function ActiveEntityFile({
         }
         return "rendered"
       }
-      // Entering editor — focus next tick.
+      // Otherwise (rendered or rich) — drop into source.
       setTimeout(() => editorTextareaRef.current?.focus(), 0)
-      return "editor"
+      return "source"
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewable, buffer])
@@ -262,16 +304,20 @@ function ActiveEntityFile({
                       onClick={handleToggleViewMode}
                       className="h-6 w-6 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
                       aria-label={
-                        viewMode === "rendered"
-                          ? "Edit markdown"
-                          : "Preview markdown"
+                        viewMode === "source"
+                          ? isFountain
+                            ? "Preview screenplay"
+                            : "Preview markdown"
+                          : isFountain
+                            ? "Edit raw fountain"
+                            : "Edit raw markdown"
                       }
                     >
                       <div className="relative w-4 h-4">
                         <MarkdownIcon
                           className={cn(
                             "absolute inset-0 w-4 h-4 transition-[opacity,transform] duration-200 ease-out",
-                            viewMode === "rendered"
+                            viewMode !== "source"
                               ? "opacity-100 scale-100"
                               : "opacity-0 scale-75",
                           )}
@@ -279,7 +325,7 @@ function ActiveEntityFile({
                         <CodeIcon
                           className={cn(
                             "absolute inset-0 w-4 h-4 transition-[opacity,transform] duration-200 ease-out",
-                            viewMode === "editor"
+                            viewMode === "source"
                               ? "opacity-100 scale-100"
                               : "opacity-0 scale-75",
                           )}
@@ -288,9 +334,13 @@ function ActiveEntityFile({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {viewMode === "rendered"
-                      ? "Edit markdown"
-                      : "Preview markdown"}
+                    {viewMode === "source"
+                      ? isFountain
+                        ? "Preview screenplay"
+                        : "Preview markdown"
+                      : isFountain
+                        ? "Edit raw fountain"
+                        : "Edit raw markdown"}
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -326,52 +376,108 @@ function ActiveEntityFile({
             path={path}
             onCreate={() => flush(buildTemplate(active))}
           />
-        ) : viewMode === "rendered" && previewable ? (
-          // Rendered preview — clicking anywhere on the article swaps to
-          // the textarea editor and focuses it. We wrap in a button-like
-          // div (role="button" + keyboard handlers) so screen-readers
-          // and keyboard users can also enter edit mode.
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={handleEnterEdit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault()
-                handleEnterEdit()
+        ) : isFountain ? (
+          // Screenplay surface — typeset Courier page in preview mode,
+          // raw fountain textarea in edit/source mode. Same FountainEditor
+          // component handles both via its internal `mode` prop.
+          <FountainEditor
+            value={buffer}
+            mode={viewMode === "rendered" ? "preview" : "edit"}
+            onModeChange={(next, coords) => {
+              if (next === "edit") {
+                // Click on the typeset page → swap to raw fountain.
+                // Capture the click coords if we got them so the
+                // textarea can drop the cursor near that line.
+                if (coords) {
+                  setFocusPoint({ x: coords.clientX, y: coords.clientY })
+                } else {
+                  setFocusPoint(null)
+                }
+                setViewMode("source")
+              } else {
+                handleEditorBlur()
               }
             }}
+            onChange={handleBufferChange}
+            onBlur={handleEditorBlur}
+            focusPoint={focusPoint}
+          />
+        ) : isMarkdown && viewMode !== "source" ? (
+          // Markdown rendered + rich edit — handled by a SINGLE
+          // always-mounted RichMarkdownEditor. We toggle the editor's
+          // `editable` flag on click. This is what fixes the
+          // click-to-edit displacement bug: the DOM tree is identical
+          // in both modes, only the ProseMirror editable state
+          // changes, so the page can't shift on the swap.
+          //
+          // The wrapper handles the click-to-edit gesture when in
+          // rendered mode. When already in rich mode, the wrapper
+          // becomes a passthrough — TipTap owns the cursor.
+          <div
+            role={viewMode === "rendered" ? "button" : undefined}
+            tabIndex={viewMode === "rendered" ? 0 : undefined}
+            onClick={
+              viewMode === "rendered"
+                ? (e) => {
+                    handleEnterEdit({
+                      clientX: e.clientX,
+                      clientY: e.clientY,
+                    })
+                  }
+                : undefined
+            }
+            onKeyDown={
+              viewMode === "rendered"
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      handleEnterEdit()
+                    }
+                  }
+                : undefined
+            }
             className={cn(
-              "w-full h-full pt-8 cursor-text",
-              "transition-[background-color] duration-150",
-              "hover:bg-foreground/[0.015] dark:hover:bg-foreground/[0.02]",
-              "focus:outline-none focus-visible:bg-foreground/[0.02]",
+              "w-full h-full pt-3",
+              viewMode === "rendered" && [
+                "cursor-text",
+                "transition-[background-color] duration-150",
+                "hover:bg-foreground/[0.012] dark:hover:bg-foreground/[0.02]",
+                "focus:outline-none focus-visible:bg-foreground/[0.02]",
+              ],
             )}
             aria-label="Edit markdown"
           >
-            <MarkdownPreview content={buffer} />
+            <RichMarkdownEditor
+              value={buffer}
+              editable={viewMode === "rich"}
+              onChange={handleBufferChange}
+              onBlur={handleEditorBlur}
+              autoFocus={viewMode === "rich"}
+              focusPoint={focusPoint}
+            />
           </div>
         ) : (
+          // Source mode (raw textarea). Always used for fountain;
+          // reachable for markdown via the Code/MD toggle for
+          // editing frontmatter or hand-tuning markup.
           <div className="w-full h-full pb-24">
             <textarea
               ref={editorTextareaRef}
               value={buffer}
               onChange={onChange}
-              onBlur={previewable ? handleEditorBlur : undefined}
+              onBlur={isMarkdown ? handleEditorBlur : undefined}
               spellCheck
               className={cn(
                 "block w-full max-w-[760px] mx-auto h-full min-h-full",
-                "px-10 pt-8 bg-transparent",
+                "px-10 pt-3 bg-transparent",
                 "border-0 outline-none resize-none",
                 "text-foreground/90 selection:bg-primary/25 caret-primary",
                 isFountain
                   ? "text-[13px] leading-[1.85]"
-                  : "text-[15px] leading-[1.78]",
+                  : "text-[13px] leading-[1.7]",
               )}
               style={{
-                fontFamily: isFountain
-                  ? "var(--font-mono)"
-                  : "var(--font-body)",
+                fontFamily: "var(--font-mono)",
               }}
             />
           </div>
