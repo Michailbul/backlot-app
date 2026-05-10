@@ -46,10 +46,14 @@ import {
   detailsSidebarWidthAtom,
 } from "../details-sidebar/atoms"
 import {
+  desktopViewAtom,
   selectedAgentChatIdAtom,
+  selectedChatIsRemoteAtom,
   selectedProjectAtom,
+  showNewChatFormAtom,
   threadCreateRequestAtom,
 } from "../agents/atoms"
+import { chatSourceModeAtom } from "../../lib/atoms"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import {
   DropdownMenu,
@@ -401,6 +405,10 @@ function fallbackColor(chatId: string): string {
 function ThreadSwitcher() {
   const project = useAtomValue(selectedProjectAtom)
   const [activeChatId, setActiveChatId] = useAtom(selectedAgentChatIdAtom)
+  const setSelectedChatIsRemote = useSetAtom(selectedChatIsRemoteAtom)
+  const setChatSourceMode = useSetAtom(chatSourceModeAtom)
+  const setShowNewChatForm = useSetAtom(showNewChatFormAtom)
+  const setDesktopView = useSetAtom(desktopViewAtom)
   const setThreadCreateRequest = useSetAtom(threadCreateRequestAtom)
   const activeSubChatId = useAgentSubChatStore((state) => state.activeSubChatId)
   const allSubChats = useAgentSubChatStore((state) => state.allSubChats)
@@ -416,6 +424,23 @@ function ThreadSwitcher() {
     { enabled: !!project?.id, refetchInterval: 5000 },
   )
   const threads = (chatsQuery.data ?? []).slice(0, 8)
+
+  // Mirror the sidebar's selection logic — without resetting source mode
+  // and remote-ness, ChatView mounts with a chatId but reads from the
+  // wrong source and renders empty (the bug that surfaced this fix).
+  // Remote chats use a `remote_` prefix in the sidebar; chats.list returns
+  // local ones with plain IDs, so detection covers both even though only
+  // local should appear here today.
+  const handleSelect = (chatId: string) => {
+    if (chatId === activeChatId) return
+    const isRemote = chatId.startsWith("remote_")
+    const originalId = isRemote ? chatId.replace(/^remote_/, "") : chatId
+    setActiveChatId(originalId)
+    setSelectedChatIsRemote(isRemote)
+    setChatSourceMode(isRemote ? "sandbox" : "local")
+    setShowNewChatForm(false)
+    setDesktopView(null)
+  }
 
   const createThread = (options: { kind: "fresh" } | { kind: "branch" }) => {
     if (!activeChatId) return
@@ -460,9 +485,7 @@ function ThreadSwitcher() {
                 return (
                   <DropdownMenuItem
                     key={thread.id}
-                    onClick={() => {
-                      if (!isActive) setActiveChatId(thread.id)
-                    }}
+                    onClick={() => handleSelect(thread.id)}
                     className="flex items-start gap-2 py-2"
                   >
                     <span className="mt-0.5 w-3.5 shrink-0 flex items-center justify-center">
