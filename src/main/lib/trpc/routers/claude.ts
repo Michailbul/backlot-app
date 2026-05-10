@@ -1074,6 +1074,55 @@ export const claudeRouter = router({
             // Get bundled Claude binary path
             const claudeBinaryPath = getBundledClaudeBinaryPath()
 
+            // ── Pre-flight: cwd must exist and be a directory ────────
+            // The Claude binary spawns with `cwd: input.cwd`. If the
+            // path doesn't exist (deleted worktree, fork that never
+            // wrote its tree, typo) the binary exits with code 1 and
+            // produces no stderr we can show — turning what should be
+            // a clear "cwd missing" failure into an opaque crash. Fail
+            // fast here with a message the user can act on.
+            try {
+              const cwdStat = await fs.stat(input.cwd)
+              if (!cwdStat.isDirectory()) {
+                throw new Error(
+                  `Working directory is not a folder: ${input.cwd}`,
+                )
+              }
+            } catch (err) {
+              const reason = (err as NodeJS.ErrnoException).code === "ENOENT"
+                ? `Working directory doesn't exist: ${input.cwd}`
+                : (err as Error).message
+              if (!abortController.signal.aborted) {
+                safeEmit({
+                  type: "error",
+                  errorText:
+                    `Can't start the agent. ${reason}\n\n` +
+                    `If this chat was forked, the worktree may have been ` +
+                    `removed. Try a fresh thread or restore the path.`,
+                  debugInfo: {
+                    context: "cwd-preflight",
+                    category: "CWD_MISSING",
+                    cwd: input.cwd,
+                    mode: input.mode,
+                  },
+                } as UIMessageChunk)
+              }
+              return
+            }
+
+            // ── Soft warn: paths with spaces / shell-meta chars ──────
+            // Some downstream tools and shell-out paths inside the
+            // Claude binary historically choke on these. Doesn't fail
+            // — just makes diagnostics easier when the symptom is
+            // "exited with code 1, no stderr".
+            if (/[\s'"`$]/.test(input.cwd)) {
+              console.warn(
+                `[claude] cwd contains whitespace or shell-meta chars: ` +
+                  `"${input.cwd}". If the binary crashes here with no ` +
+                  `stderr, this is the likeliest cause.`,
+              )
+            }
+
             const resumeSessionId = input.sessionId || existingSessionId || undefined
 
             // DEBUG: Session resume path tracing
@@ -2015,6 +2064,40 @@ ${prompt}
               } else if (err.message?.includes("exited with code")) {
                 errorContext = "Claude Code process crashed"
                 errorCategory = "PROCESS_CRASH"
+                // When the binary dies without writing a single byte
+                // to stderr, the user gets nothing actionable. Capture
+                // the most common preventable causes (cwd vanished,
+                // binary missing/non-exec, path with shell-meta chars)
+                // so the surfaced error tells them what to check.
+                if (!stderrOutput) {
+                  const hints: string[] = []
+                  let cwdExists = true
+                  try {
+                    await fs.stat(input.cwd)
+                  } catch {
+                    cwdExists = false
+                    hints.push(`working directory no longer exists at ${input.cwd}`)
+                  }
+                  if (cwdExists && /[\s'"`$]/.test(input.cwd)) {
+                    hints.push(
+                      `working directory contains whitespace or shell-meta characters (${input.cwd}) — historically known to break the Claude binary's internal shell-outs`,
+                    )
+                  }
+                  try {
+                    await fs.access(claudeBinaryPath, fs.constants.X_OK)
+                  } catch {
+                    hints.push(
+                      `Claude binary at ${claudeBinaryPath} isn't executable (or missing)`,
+                    )
+                  }
+                  if (hints.length > 0) {
+                    errorContext =
+                      `Claude Code process crashed. Likely cause: ${hints.join("; ")}`
+                  } else {
+                    errorContext =
+                      `Claude Code process crashed (no stderr captured). cwd=${input.cwd} sessionId=${resumeSessionId ?? "(fresh)"}`
+                  }
+                }
               } else if (err.message?.includes("ENOENT")) {
                 errorContext = "Required executable not found in PATH"
                 errorCategory = "EXECUTABLE_NOT_FOUND"
