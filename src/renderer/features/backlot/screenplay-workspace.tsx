@@ -31,6 +31,8 @@ import {
   GitBranch,
   MessageSquare,
   MessageSquarePlus,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Trash2,
 } from "lucide-react"
@@ -43,7 +45,12 @@ import { CanvasModeView } from "./canvas-mode-view"
 import { EntityEditor } from "./entity-editor"
 import { Resizer } from "./resizer"
 import { ShotlistSurface } from "./shotlist-surface"
-import { activeEntityAtom, assistantRailWidthAtom, viewModeAtom } from "./atoms"
+import {
+  activeEntityAtom,
+  assistantRailWidthAtom,
+  projectTreeOpenAtom,
+  viewModeAtom,
+} from "./atoms"
 import { Sparkles } from "lucide-react"
 import {
   selectedAgentChatIdAtom,
@@ -116,25 +123,22 @@ export function ScreenplayWorkspace({
   }, [setRailOpen])
 
   return (
-    <div className="relative flex flex-col h-full w-full overflow-hidden bg-background">
+    <div className="relative flex h-full w-full overflow-hidden bg-background">
       {/* Master canvas — the editor's own paper tone fills the window.
           A faint lime halo keeps it from reading dead-flat. */}
       <AmbientCanvas />
 
-      {/* Top navbar — a floating liquid-glass island spanning the top.
-          The canvas + lime halo glow through its frosted pane. */}
-      <ModeToggleStrip />
-
-      {/* Floating-island shell — the working area below the navbar. The
-          rail and assistant are cards lifted off the canvas; the editor
-          sits directly on the bare canvas between them. */}
-      <div className="relative z-10 flex flex-1 min-h-0 w-full gap-2.5 p-2.5">
-        {/* Left rail — project tree navigator. Collapsible island. */}
+      {/* Floating-island shell. The rail and assistant are cards lifted
+          off the canvas; the navbar floats above the editor only, so the
+          assistant rail keeps its full height beside it. */}
+      <div className="relative z-10 flex h-full w-full gap-2.5 p-2.5">
+        {/* Left rail — project tree navigator. */}
         <ProjectTreeRail />
 
-        {/* Center column — the editor, directly on the bare canvas (no
-            card — the editor IS the canvas). */}
-        <div className="relative flex-1 min-w-0 flex flex-col">
+        {/* Center column — floating liquid-glass navbar above, the editor
+            on the bare canvas below. */}
+        <div className="relative flex-1 min-w-0 flex flex-col gap-2.5">
+          <ModeToggleStrip />
           <div className="relative flex-1 min-h-0 flex flex-col">
             <LineageBreadcrumb />
             <div className="flex-1 min-h-0">
@@ -280,9 +284,31 @@ function AmbientCanvas() {
  */
 function ModeToggleStrip() {
   const [mode, setMode] = useAtom(viewModeAtom)
+  const [treeOpen, setTreeOpen] = useAtom(projectTreeOpenAtom)
   return (
-    <div className="relative z-20 mx-2.5 mt-2.5 flex items-stretch h-12 bl-liquid-glass rounded-2xl select-none shrink-0 overflow-hidden">
-      <div className="flex items-stretch gap-7 pl-6">
+    <div className="relative z-20 flex items-stretch h-12 bl-liquid-glass rounded-2xl select-none shrink-0 overflow-hidden">
+      {/* File-explorer toggle — the panel control lives here in the top
+          bar, IDE-style, so the rail itself carries no collapse chrome. */}
+      <div className="flex items-center pl-2.5 pr-1">
+        <button
+          type="button"
+          onClick={() => setTreeOpen((v) => !v)}
+          className={cn(
+            "press flex items-center justify-center h-8 w-8 rounded-lg",
+            "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+            "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
+          )}
+          title={treeOpen ? "Hide file explorer" : "Show file explorer"}
+          aria-label={treeOpen ? "Hide file explorer" : "Show file explorer"}
+        >
+          {treeOpen ? (
+            <PanelLeftClose className="h-[18px] w-[18px]" />
+          ) : (
+            <PanelLeftOpen className="h-[18px] w-[18px]" />
+          )}
+        </button>
+      </div>
+      <div className="flex items-stretch gap-7 pl-1">
         <ModeMastheadItem
           label="Screenwriting"
           active={mode === "screenwriting"}

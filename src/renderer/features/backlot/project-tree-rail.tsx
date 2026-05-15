@@ -18,11 +18,9 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  ChevronsLeft,
   Globe2,
   Layers,
   MapPin,
-  PanelLeftOpen,
   Plus,
   Sparkles,
   User,
@@ -119,30 +117,12 @@ const MIN_WIDTH = 200
 const MAX_WIDTH = 420
 
 export function ProjectTreeRail() {
-  const [open, setOpen] = useAtom(projectTreeOpenAtom)
+  const open = useAtomValue(projectTreeOpenAtom)
   const [width, setWidth] = useAtom(projectTreeWidthAtom)
 
-  if (!open) {
-    // Collapsed — a compact island button at the top-left. Same quiet
-    // treatment as the app-sidebar reopen control, so the two collapsed
-    // panels read as one consistent system.
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          "press shrink-0 self-start flex items-center justify-center",
-          "h-9 w-9 rounded-lg bl-island",
-          "text-muted-foreground hover:text-foreground hover:border-primary/40",
-          "transition-[color,border-color] duration-150 [transition-timing-function:var(--ease-natural)]",
-        )}
-        title="Show project"
-        aria-label="Show project"
-      >
-        <PanelLeftOpen className="h-[18px] w-[18px]" />
-      </button>
-    )
-  }
+  // Collapsed — render nothing. The file-explorer toggle lives in the
+  // top navbar (IDE-style); the rail carries no collapse chrome itself.
+  if (!open) return null
 
   return (
     <div className="relative flex shrink-0 h-full">
@@ -151,21 +131,11 @@ export function ProjectTreeRail() {
         style={{ width }}
       >
         {/* Header */}
-        <div className="relative flex items-center justify-between h-10 px-3 border-b border-border select-none shrink-0">
-          <div className="flex items-center gap-2">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
-              Project
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="press text-muted-foreground hover:text-foreground transition-[color] duration-150 [transition-timing-function:var(--ease-natural)]"
-            title="Hide project"
-          >
-            <ChevronsLeft className="h-3.5 w-3.5" />
-          </button>
+        <div className="flex items-center gap-2 h-10 px-3 border-b border-border select-none shrink-0">
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
+          <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
+            Project
+          </span>
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto">
@@ -187,28 +157,13 @@ export function ProjectTreeRail() {
 // ────────────────────────────────────────────────────────────────────────
 
 function ProjectTreeContent() {
-  const [activeChatId, setActiveChatId] = useAtom(selectedAgentChatIdAtom)
-  const selectedProject = useAtomValue(selectedProjectAtom)
-  const directions = trpc.chats.directionsForProject.useQuery(
-    { projectId: selectedProject?.id ?? "" },
-    { enabled: !!selectedProject?.id, refetchInterval: 5000 },
-  )
-
   // ProjectFileTree handles its own root resolution: it reads the
   // selected chat's worktree when a chat is active, otherwise it falls
-  // back to the canonical project root from `selectedProjectAtom`. The
-  // tree shows files in both modes — there's no "open a chat first"
-  // gate. When no project is selected at all, ProjectFileTree renders
-  // its own "No project" empty state.
+  // back to the canonical project root. The tree shows files in both
+  // modes — there's no "open a chat first" gate. When no project is
+  // selected at all, ProjectFileTree renders its own empty state.
   return (
     <div className="py-2">
-      <DirectionsSection
-        directions={directions.data ?? []}
-        activeChatId={activeChatId}
-        onSelect={setActiveChatId}
-        isLoading={directions.isLoading}
-      />
-      <div className="mx-3 mt-2 mb-3 h-px bg-border/70" />
       <ProjectFileTree />
       <div className="mx-3 mt-3 mb-1 h-px bg-border/70" />
       <DemoTrigger />
