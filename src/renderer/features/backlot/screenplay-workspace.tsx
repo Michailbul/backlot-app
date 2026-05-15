@@ -31,8 +31,6 @@ import {
   GitBranch,
   MessageSquare,
   MessageSquarePlus,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Trash2,
 } from "lucide-react"
@@ -45,12 +43,7 @@ import { CanvasModeView } from "./canvas-mode-view"
 import { EntityEditor } from "./entity-editor"
 import { Resizer } from "./resizer"
 import { ShotlistSurface } from "./shotlist-surface"
-import {
-  activeEntityAtom,
-  assistantRailWidthAtom,
-  projectTreeOpenAtom,
-  viewModeAtom,
-} from "./atoms"
+import { activeEntityAtom, assistantRailWidthAtom, viewModeAtom } from "./atoms"
 import { Sparkles } from "lucide-react"
 import {
   selectedAgentChatIdAtom,
@@ -205,14 +198,8 @@ export function ScreenplayWorkspace({
           className="relative shrink-0 flex flex-col min-w-0 bl-island rounded-2xl overflow-hidden"
           style={{ width: railWidth }}
         >
-          {/* Rail header */}
-          <div className="relative flex items-center justify-between gap-2 h-10 px-3 border-b border-border select-none shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
-                Assistant
-              </span>
-            </div>
+          {/* Rail header — actions only (Threads / Fork / Hide). */}
+          <div className="relative flex items-center justify-end gap-2 h-10 px-3 border-b border-border select-none shrink-0">
             <div className="flex items-center gap-1">
               <ThreadSwitcher />
               <ForkActiveButton />
@@ -284,31 +271,9 @@ function AmbientCanvas() {
  */
 function ModeToggleStrip() {
   const [mode, setMode] = useAtom(viewModeAtom)
-  const [treeOpen, setTreeOpen] = useAtom(projectTreeOpenAtom)
   return (
     <div className="relative z-20 flex items-stretch h-12 bl-liquid-glass rounded-2xl select-none shrink-0 overflow-hidden">
-      {/* File-explorer toggle — the panel control lives here in the top
-          bar, IDE-style, so the rail itself carries no collapse chrome. */}
-      <div className="flex items-center pl-2.5 pr-1">
-        <button
-          type="button"
-          onClick={() => setTreeOpen((v) => !v)}
-          className={cn(
-            "press flex items-center justify-center h-8 w-8 rounded-lg",
-            "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-            "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
-          )}
-          title={treeOpen ? "Hide file explorer" : "Show file explorer"}
-          aria-label={treeOpen ? "Hide file explorer" : "Show file explorer"}
-        >
-          {treeOpen ? (
-            <PanelLeftClose className="h-[18px] w-[18px]" />
-          ) : (
-            <PanelLeftOpen className="h-[18px] w-[18px]" />
-          )}
-        </button>
-      </div>
-      <div className="flex items-stretch gap-7 pl-1">
+      <div className="flex items-stretch gap-7 pl-6">
         <ModeMastheadItem
           label="Screenwriting"
           active={mode === "screenwriting"}
@@ -329,26 +294,6 @@ function ModeToggleStrip() {
           active={mode === "canvas"}
           onClick={() => setMode("canvas")}
         />
-      </div>
-      {/* Right edge: a build/version flag + a tracked-mono stage caption.
-          The flag confirms which UI build is running and, because it's
-          tinted with the brand accent, doubles as a lime-vs-blue check. */}
-      <div className="ml-auto flex items-center gap-3 pr-5">
-        <span
-          className="rounded-full bg-primary/20 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--accent-deep))]"
-          title="Backlot UI build marker"
-        >
-          design v6 · glass
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground/55">
-          {mode === "screenwriting"
-            ? "The page"
-            : mode === "prompts"
-              ? "The prompt"
-              : mode === "shotlist"
-                ? "The shotlist"
-                : "The board"}
-        </span>
       </div>
     </div>
   )

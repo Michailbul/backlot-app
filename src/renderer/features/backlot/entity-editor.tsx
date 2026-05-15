@@ -344,87 +344,8 @@ function ActiveEntityFile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewable, buffer])
 
-  const label = "label" in active ? active.label : "Untitled"
-  const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header — compact file bar. One row: kind icon, filename, dimmed
-          parent path; save state + raw/preview toggle on the right.
-          Replaces the old full-height editorial masthead. */}
-      <header className="relative shrink-0 flex items-center gap-2.5 px-10 py-3 border-b border-border">
-        <KindIcon kind={active.kind} />
-        <div className="flex items-baseline gap-2 min-w-0">
-          <h1
-            className="shrink-0 text-[15px] font-semibold leading-none text-foreground"
-            style={{ fontFamily: "var(--font-body)" }}
-            title={label}
-          >
-            {label}
-          </h1>
-          {dir && (
-            <span
-              className="truncate text-[11px] text-muted-foreground/50"
-              style={{ fontFamily: "var(--font-mono)" }}
-              title={path}
-            >
-              {dir}
-            </span>
-          )}
-        </div>
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-            <SaveIndicator state={saveState} />
-              {previewable && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleToggleViewMode}
-                      className="h-6 w-6 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
-                      aria-label={
-                        viewMode === "source"
-                          ? isFountain
-                            ? "Preview screenplay"
-                            : "Preview markdown"
-                          : isFountain
-                            ? "Edit raw fountain"
-                            : "Edit raw markdown"
-                      }
-                    >
-                      <div className="relative w-4 h-4">
-                        <MarkdownIcon
-                          className={cn(
-                            "absolute inset-0 w-4 h-4 transition-[opacity,transform] duration-200 ease-out",
-                            viewMode !== "source"
-                              ? "opacity-100 scale-100"
-                              : "opacity-0 scale-75",
-                          )}
-                        />
-                        <CodeIcon
-                          className={cn(
-                            "absolute inset-0 w-4 h-4 transition-[opacity,transform] duration-200 ease-out",
-                            viewMode === "source"
-                              ? "opacity-100 scale-100"
-                              : "opacity-0 scale-75",
-                          )}
-                        />
-                      </div>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {viewMode === "source"
-                      ? isFountain
-                        ? "Preview screenplay"
-                        : "Preview markdown"
-                      : isFountain
-                        ? "Edit raw fountain"
-                        : "Edit raw markdown"}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-          </div>
-      </header>
 
       {/* Pending-changes banner — when the active file differs from
           HEAD (whether the agent or the user wrote them), surface a

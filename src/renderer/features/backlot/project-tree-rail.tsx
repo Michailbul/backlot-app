@@ -130,14 +130,6 @@ export function ProjectTreeRail() {
         className="relative flex flex-col bl-island rounded-2xl overflow-hidden"
         style={{ width }}
       >
-        {/* Header */}
-        <div className="flex items-center gap-2 h-10 px-3 border-b border-border select-none shrink-0">
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
-          <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
-            Project
-          </span>
-        </div>
-
         <div className="flex-1 min-h-0 overflow-auto">
           <ProjectTreeContent />
         </div>
