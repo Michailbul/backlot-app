@@ -288,7 +288,7 @@ export function PromptsModeView() {
   if (!scene) return null
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       <SceneHeader scene={scene} onChange={updateScene} />
       <ScriptPromptSplit
         script={scene.script}
@@ -364,7 +364,7 @@ function SceneHeader({
   onChange: (patch: Partial<SceneRecord>) => void
 }) {
   return (
-    <div className="border-b border-border bg-card/30 px-6 py-3 shrink-0">
+    <div className="bl-glass-strong border-b border-border/60 px-6 py-3 shrink-0">
       <div className="flex items-baseline gap-3 mb-1">
         <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 font-mono">
           Scene {scene.number}
@@ -465,8 +465,8 @@ function Panel({
   return (
     <div className="flex-1 min-w-0 flex flex-col">
       {/* Panel header — minimal, just the label */}
-      <div className="flex items-center gap-2 h-9 px-4 border-b border-border bg-card/40 select-none shrink-0">
-        <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 font-mono">
+      <div className="flex items-center gap-2 h-10 px-4 border-b border-border/60 bl-glass select-none shrink-0">
+        <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
           {label}
         </span>
       </div>
@@ -605,7 +605,7 @@ function SceneNav({
   onSelect: (idx: number) => void
 }) {
   return (
-    <div className="flex items-center justify-center gap-1 h-10 px-4 border-t border-border bg-card/30 shrink-0">
+    <div className="flex items-center justify-center gap-1 h-10 px-4 border-t border-border/60 bl-glass shrink-0">
       {scenes.map((s, i) => (
         <button
           key={s.id}
@@ -695,7 +695,7 @@ function RefsPanel({
   }
 
   return (
-    <section className="bg-card/20 shrink-0 flex flex-col">
+    <section className="bl-glass shrink-0 flex flex-col">
       {/* Top resize handle */}
       {!collapsed && (
         <Resizer

@@ -40,12 +40,9 @@ import { ProjectTreeRail } from "./project-tree-rail"
 import { ScreenplayPane } from "./screenplay-pane"
 import { PromptsModeView } from "./prompts-mode-view"
 import { EntityEditor } from "./entity-editor"
-import { activeEntityAtom, viewModeAtom } from "./atoms"
+import { Resizer } from "./resizer"
+import { activeEntityAtom, assistantRailWidthAtom, viewModeAtom } from "./atoms"
 import { Sparkles } from "lucide-react"
-import {
-  detailsSidebarOpenAtom,
-  detailsSidebarWidthAtom,
-} from "../details-sidebar/atoms"
 import {
   selectedAgentChatIdAtom,
   selectedProjectAtom,
@@ -64,8 +61,11 @@ import { cn } from "../../lib/utils"
 
 const ASSISTANT_RAIL_OPEN_ATOM = atomWithStorage("backlot:assistant-rail-open", true)
 
-const RAIL_BASE_WIDTH = 420 // px — wide enough for chat bubbles + tool chips, narrow enough that the screenplay still breathes
-const DETAILS_FALLBACK_WIDTH = 500 // matches detailsSidebarWidthAtom default in case the atom isn't initialised yet
+// The assistant rail is drag-resizable via the handle on its left edge.
+// These clamp the user-set base width: wide enough for chat bubbles +
+// tool chips, never so wide the screenplay loses the canvas.
+const RAIL_MIN_WIDTH = 320
+const RAIL_MAX_WIDTH = 760
 
 interface ScreenplayWorkspaceProps {
   chatId: string | null
@@ -80,18 +80,7 @@ export function ScreenplayWorkspace({
   assistant,
 }: ScreenplayWorkspaceProps) {
   const [railOpen, setRailOpen] = useAtom(ASSISTANT_RAIL_OPEN_ATOM)
-
-  // When the chat opens its inline DetailsSidebar (Workspace / Branch /
-  // Path / Changes / MCP), it demands ~500px of its own. With the rail
-  // pinned at 420px the details column overflows the right edge of the
-  // window. Subscribe to both atoms so the rail grows when details opens
-  // and shrinks back when it closes — driven by the atoms instead of
-  // being implicit in the flex tree.
-  const isDetailsOpen = useAtomValue(detailsSidebarOpenAtom)
-  const detailsWidth = useAtomValue(detailsSidebarWidthAtom) ?? DETAILS_FALLBACK_WIDTH
-  const railWidth = isDetailsOpen
-    ? RAIL_BASE_WIDTH + detailsWidth
-    : RAIL_BASE_WIDTH
+  const [railUserWidth, setRailUserWidth] = useAtom(assistantRailWidthAtom)
 
   // Cmd+\ (or Ctrl+\) toggles the assistant rail. Single keystroke, mirrors
   // VS Code / Cursor's secondary-sidebar shortcut. Saves the user from
@@ -110,7 +99,12 @@ export function ScreenplayWorkspace({
   }, [setRailOpen])
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    <div className="relative flex h-full w-full overflow-hidden bg-background">
+      {/* Ambient canvas — soft lime halo, a faint grid-dot field and
+          paper grain. Sits behind every panel at z-0; the glass rails
+          let it bleed through so the whole shell reads as one surface. */}
+      <AmbientCanvas />
+
       {/* Left rail — project tree navigator. Collapsible. */}
       <ProjectTreeRail />
 
@@ -121,7 +115,7 @@ export function ScreenplayWorkspace({
           Toggling is a workflow shift, NOT a layout split — only one
           surface is visible at a time so the user is never confused
           about which mode they're in. */}
-      <div className="flex-1 min-w-0 relative flex flex-col">
+      <div className="relative z-10 flex-1 min-w-0 flex flex-col">
         <ModeToggleStrip />
         <LineageBreadcrumb />
         <div className="flex-1 min-h-0">
@@ -163,18 +157,34 @@ export function ScreenplayWorkspace({
         )}
       </div>
 
-      {/* Right rail — assistant. Width grows when the chat's inline Details
-          panel is open so it doesn't overflow off the right edge of the window. */}
+      {/* Right-rail resize handle — drag to set the assistant width. The
+          handle sits on the rail's LEFT edge, so dragging left (negative
+          delta) widens the rail; subtract the delta to grow it. */}
+      {railOpen && (
+        <Resizer
+          axis="x"
+          className="z-10"
+          onResize={(d) =>
+            setRailUserWidth((w) =>
+              Math.max(RAIL_MIN_WIDTH, Math.min(RAIL_MAX_WIDTH, w - d)),
+            )
+          }
+        />
+      )}
+
+      {/* Right rail — assistant. Drag the handle on its left edge to
+          resize; width also grows when the chat's inline Details panel
+          opens so it doesn't overflow off the right edge of the window. */}
       {railOpen && (
         <aside
-          className="border-l border-border bg-background/40 relative shrink-0 flex flex-col transition-[width] duration-150 ease-out"
-          style={{ width: railWidth }}
+          className="relative z-10 shrink-0 flex flex-col border-l border-border/60 bl-glass"
+          style={{ width: railUserWidth }}
         >
           {/* Rail header */}
-          <div className="flex items-center justify-between gap-2 h-9 px-3 border-b border-border bg-card/40 select-none shrink-0">
+          <div className="bl-glass-sheen relative flex items-center justify-between gap-2 h-10 px-3 border-b border-border/60 bl-glass-strong select-none shrink-0">
             <div className="flex items-center gap-2 min-w-0">
-              <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
-              <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 font-mono">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
                 Assistant
               </span>
             </div>
@@ -207,6 +217,53 @@ export function ScreenplayWorkspace({
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// AmbientCanvas — the shell's background texture. Three stacked layers,
+// all pointer-events-none, all behind the panels at z-0:
+//   1. a soft lime halo bleeding down from the top edge
+//   2. a faint grid-dot field, masked to fade out toward the bottom
+//   3. fine paper grain
+// The glass rails are translucent, so this texture reads through them
+// and ties every panel into one continuous surface.
+// ────────────────────────────────────────────────────────────────────────
+
+const GRAIN_SVG =
+  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>\")"
+
+function AmbientCanvas() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+    >
+      {/* Lime halo — soft glow bleeding down from the top edge */}
+      <div
+        className="absolute inset-x-0 top-0 h-[44vh]"
+        style={{
+          background:
+            "radial-gradient(ellipse 68% 100% at 50% 0%, hsl(var(--primary) / 0.16) 0%, transparent 72%)",
+        }}
+      />
+      {/* Grid-dot field — faint, fades out toward the bottom */}
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(hsl(var(--foreground) / 0.07) 1px, transparent 1.4px)",
+          backgroundSize: "24px 24px",
+          maskImage: "linear-gradient(to bottom, black 0%, transparent 78%)",
+          WebkitMaskImage: "linear-gradient(to bottom, black 0%, transparent 78%)",
+        }}
+      />
+      {/* Paper grain */}
+      <div
+        className="absolute inset-0 opacity-[0.038]"
+        style={{ backgroundImage: GRAIN_SVG }}
+      />
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // ModeToggleStrip — top-of-pane tabs for the workflow stages.
 //
 //   [ ✎ Screenwriting ]  [ ✦ Prompts ]
@@ -226,8 +283,12 @@ export function ScreenplayWorkspace({
 function ModeToggleStrip() {
   const [mode, setMode] = useAtom(viewModeAtom)
   return (
-    <div className="relative flex items-stretch h-11 border-b border-border/50 bg-background select-none shrink-0">
-      <div className="flex items-stretch gap-8 pl-6 pr-6">
+    <div className="bl-glass-sheen relative z-10 flex items-stretch h-11 border-b border-border/60 bl-glass select-none shrink-0">
+      {/* Leading mark — a steady lime dot, the shell's signature accent. */}
+      <div className="flex items-center pl-5 pr-4">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
+      </div>
+      <div className="flex items-stretch gap-7">
         <ModeMastheadItem
           label="Screenwriting"
           active={mode === "screenwriting"}
@@ -239,14 +300,9 @@ function ModeToggleStrip() {
           onClick={() => setMode("prompts")}
         />
       </div>
-      {/* Right edge: a single tracked-mono caption identifying the
-          current pipeline stage. Reinforces the masthead without
-          competing with it. */}
+      {/* Right edge: a tracked-mono caption naming the current stage. */}
       <div className="ml-auto flex items-center pr-5">
-        <span
-          className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground/45"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
+        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground/55">
           {mode === "screenwriting" ? "The page" : "The prompt"}
         </span>
       </div>
@@ -726,7 +782,7 @@ function LineageBreadcrumb() {
   if (chain.length <= 1) return null
 
   return (
-    <div className="flex items-center gap-1 h-6 px-3 border-b border-border bg-card/20 select-none shrink-0 overflow-hidden">
+    <div className="flex items-center gap-1.5 h-7 px-3 border-b border-border/60 bl-glass select-none shrink-0 overflow-hidden">
       <GitBranch className="h-3 w-3 text-muted-foreground/60 shrink-0" />
       <div className="flex items-center gap-1 text-[11px] font-mono tabular-nums truncate">
         {chain.map((d, idx) => {

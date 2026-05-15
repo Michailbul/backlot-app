@@ -124,9 +124,9 @@ export function ProjectTreeRail() {
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "press shrink-0 flex flex-col items-center justify-start py-3 gap-2",
-          "w-7 border-r border-border bg-card/30",
-          "text-muted-foreground hover:text-foreground hover:bg-card/60",
+          "press relative z-10 shrink-0 flex flex-col items-center justify-start py-3 gap-2",
+          "w-8 border-r border-border/60 bl-glass",
+          "text-muted-foreground hover:text-foreground",
           "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
         )}
         title="Show project"
@@ -145,16 +145,16 @@ export function ProjectTreeRail() {
   }
 
   return (
-    <div className="flex shrink-0 h-full">
+    <div className="relative z-10 flex shrink-0 h-full">
       <aside
-        className="border-r border-border bg-card/30 flex flex-col"
+        className="relative flex flex-col border-r border-border/60 bl-glass"
         style={{ width }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between h-9 px-3 border-b border-border bg-card/40 select-none shrink-0">
+        <div className="bl-glass-sheen relative flex items-center justify-between h-10 px-3 border-b border-border/60 bl-glass-strong select-none shrink-0">
           <div className="flex items-center gap-2">
-            <Clapperboard className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 font-mono">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
+            <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
               Project
             </span>
           </div>

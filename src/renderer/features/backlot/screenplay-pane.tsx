@@ -282,27 +282,27 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
   void _activeEntity // referenced so ESLint doesn't drop the import while the panel matures
 
   return (
-    <div className="flex flex-col h-full w-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Slug bar */}
-      <div className="flex items-center justify-between h-9 px-4 border-b border-border bg-card/40 select-none">
+      <div className="bl-glass-sheen relative flex items-center justify-between h-10 px-3 border-b border-border/60 bl-glass-strong select-none shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="text-xs font-medium text-foreground/80 truncate">
+          <span className="text-xs font-medium text-foreground/85 truncate">
             {directionName ?? "No direction"}
           </span>
-          <span className="text-muted-foreground/50 text-xs">·</span>
+          <span className="text-muted-foreground/40 text-xs">/</span>
           <span className="text-xs text-muted-foreground truncate font-mono">
             {relativePath}
           </span>
         </div>
-        <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-mono">
+        <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60">
           Backlot
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between h-10 px-3 border-b border-border bg-background select-none">
-        <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-secondary/60 border border-border/50">
+      <div className="flex items-center justify-between h-10 px-3 border-b border-border/60 bl-glass select-none shrink-0">
+        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-secondary/70 border border-border/60">
           {VIEW_TABS.map((tab) => {
             const Icon = tab.icon
             const isActive = viewMode === tab.id
@@ -314,7 +314,7 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
                   "press flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium",
                   "transition-[color,background-color,box-shadow] duration-200 [transition-timing-function:var(--ease-natural)]",
                   isActive
-                    ? "bg-background text-foreground shadow-[0_1px_0_0_rgba(0,0,0,0.04),0_1px_2px_-1px_rgba(0,0,0,0.06)]"
+                    ? "bg-card text-foreground shadow-[0_1px_2px_-1px_hsl(var(--foreground)/0.14)]"
                     : "text-muted-foreground hover:text-foreground/80",
                 )}
               >
@@ -507,7 +507,7 @@ export function ScreenplayPane({ chatId, directionName }: ScreenplayPaneProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between h-7 px-4 border-t border-border bg-card/40 select-none">
+      <div className="bl-glass-sheen relative flex items-center justify-between h-7 px-3 border-t border-border/60 bl-glass-strong select-none shrink-0">
         <div className="flex items-center gap-3 text-[10px] text-muted-foreground/70 font-mono tabular-nums uppercase tracking-wider">
           <span>{stats.words} words</span>
           <span className="text-muted-foreground/40">·</span>
@@ -947,14 +947,17 @@ function HistorySurface({
   if (commits.length === 0) {
     return (
       <div className="h-full flex items-center justify-center px-8">
-        <div className="max-w-md text-center space-y-3">
-          <div className="mx-auto w-12 h-12 rounded-full bg-secondary/60 border border-border/60 flex items-center justify-center">
-            <History className="h-5 w-5 text-muted-foreground" />
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-5 w-12 h-12 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center">
+            <History className="h-5 w-5 text-[hsl(var(--accent-deep))]" />
           </div>
-          <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground">
+          <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.28em] text-[hsl(var(--accent-deep))]">
+            // History
+          </p>
+          <h2 className="font-display text-[2rem] font-semibold leading-[1.1] tracking-[-0.015em] text-foreground">
             No history yet.
           </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
             History fills in as you Accept or Approve agent edits — each
             commit becomes a snapshot you can browse or restore.
           </p>
@@ -1068,11 +1071,14 @@ function BlankCanvas({ variant = "editor" }: { variant?: "editor" | "preview" })
         variant === "preview" && "bg-secondary/20",
       )}
     >
-      <div className="max-w-md text-center space-y-3">
-        <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground">
+      <div className="max-w-md text-center">
+        <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.28em] text-[hsl(var(--accent-deep))]">
+          // The page
+        </p>
+        <h2 className="font-display text-[2rem] font-semibold leading-[1.1] tracking-[-0.015em] text-foreground">
           The page is yours.
         </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
+        <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
           Ask the assistant on the right to draft a scene — the result lands
           here, not in chat. The agent edits this file in place.
         </p>
@@ -1084,11 +1090,14 @@ function BlankCanvas({ variant = "editor" }: { variant?: "editor" | "preview" })
 function NoChatState() {
   return (
     <div className="h-full flex items-center justify-center px-8">
-      <div className="max-w-md text-center space-y-3">
-        <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground">
+      <div className="max-w-md text-center">
+        <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.28em] text-[hsl(var(--accent-deep))]">
+          // Direction
+        </p>
+        <h2 className="font-display text-[2rem] font-semibold leading-[1.1] tracking-[-0.015em] text-foreground">
           Pick a direction.
         </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
+        <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
           Open a chat in the sidebar, or start a new one. Each direction is its
           own git worktree, with its own screenplay artifact.
         </p>
@@ -1106,14 +1115,17 @@ function NoArtifactState({
 }) {
   return (
     <div className="h-full flex items-center justify-center px-8">
-      <div className="max-w-md text-center space-y-4">
-        <div className="mx-auto w-12 h-12 rounded-full bg-secondary/60 border border-border/60 flex items-center justify-center">
-          <FileQuestion className="h-5 w-5 text-muted-foreground" />
+      <div className="max-w-md text-center">
+        <div className="mx-auto mb-5 w-12 h-12 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center">
+          <FileQuestion className="h-5 w-5 text-[hsl(var(--accent-deep))]" />
         </div>
-        <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground">
+        <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.28em] text-[hsl(var(--accent-deep))]">
+          // Screenplay
+        </p>
+        <h2 className="font-display text-[2rem] font-semibold leading-[1.1] tracking-[-0.015em] text-foreground">
           No screenplay yet.
         </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
+        <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
           Send the assistant a prompt — it will create{" "}
           <code className="font-mono text-xs">screenplay.fountain</code>{" "}
           automatically. Or seed an empty one to start typing yourself.
@@ -1123,7 +1135,7 @@ function NoArtifactState({
           onClick={onEnsure}
           disabled={isEnsuring}
           className={cn(
-            "press px-3 py-1.5 rounded-md text-xs font-medium",
+            "press mt-7 px-4 py-2 rounded-full text-xs font-medium",
             "bg-primary text-primary-foreground",
             "shadow-[0_1px_2px_-1px_rgba(0,0,0,0.15)] hover:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.18)]",
             "transition-[box-shadow] duration-150 [transition-timing-function:var(--ease-out)]",

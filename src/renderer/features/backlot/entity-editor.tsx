@@ -347,11 +347,11 @@ function ActiveEntityFile({
   const label = "label" in active ? active.label : "Untitled"
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Header — editorial masthead. Kicker (mono caps) + display
           headline. Right side: save state + path in mono. The hairline
-          rule is left-anchored Coral, like an editor's margin mark. */}
-      <header className="relative shrink-0 px-10 pt-7 pb-5 bg-background">
+          rule is left-anchored Lime, like an editor's margin mark. */}
+      <header className="relative shrink-0 px-10 pt-7 pb-5">
         <div className="flex items-end justify-between gap-6">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">

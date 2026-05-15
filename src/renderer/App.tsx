@@ -190,7 +190,7 @@ export function App() {
   return (
     <WindowProvider>
       <JotaiProvider store={appStore}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <VSCodeThemeProvider>
             <TooltipProvider delayDuration={100}>
               <TRPCProvider>

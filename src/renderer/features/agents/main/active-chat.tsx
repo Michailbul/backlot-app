@@ -40,8 +40,7 @@ import {
   ArrowDown,
   ChevronDown,
   GitFork,
-  ListTree,
-  TerminalSquare
+  ListTree
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import {
@@ -88,12 +87,9 @@ import {
   detailsSidebarOpenAtom,
   unifiedSidebarEnabledAtom,
 } from "../../details-sidebar/atoms"
-import { DetailsSidebar } from "../../details-sidebar/details-sidebar"
 import { FileViewerSidebar } from "../../file-viewer"
 import { FileSearchDialog } from "../../file-viewer/components/file-search-dialog"
-import { terminalSidebarOpenAtomFamily, terminalDisplayModeAtom, terminalBottomHeightAtom } from "../../terminal/atoms"
-import { TerminalSidebar, TerminalBottomPanelContent } from "../../terminal/terminal-sidebar"
-import { ResizableBottomPanel } from "@/components/ui/resizable-bottom-panel"
+import { terminalSidebarOpenAtomFamily, terminalDisplayModeAtom } from "../../terminal/atoms"
 import {
   agentsChangesPanelCollapsedAtom,
   agentsChangesPanelWidthAtom,
@@ -6644,53 +6640,6 @@ Make sure to preserve all functionality from both branches when resolving confli
                       </span>
                     </PreviewSetupHoverCard>
                   ))}
-                {/* Overview/Terminal Button - shows when sidebar is closed and worktree/sandbox exists (desktop only) */}
-                {!isMobileFullscreen &&
-                  (worktreePath || sandboxId) && (
-                    isUnifiedSidebarEnabled ? (
-                      // Details button for unified sidebar
-                      !isDetailsSidebarOpen && (
-                        <Tooltip delayDuration={500}>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setIsDetailsSidebarOpen(true)}
-                              className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
-                              aria-label="View details"
-                            >
-                              <IconOpenSidebarRight className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            View details
-                            {toggleDetailsHotkey && <Kbd>{toggleDetailsHotkey}</Kbd>}
-                          </TooltipContent>
-                        </Tooltip>
-                      )
-                    ) : (
-                      // Terminal button for legacy sidebars
-                      !isTerminalSidebarOpen && (
-                        <Tooltip delayDuration={500}>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setIsTerminalSidebarOpen(true)}
-                              className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
-                              aria-label="Open terminal"
-                            >
-                              <TerminalSquare className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            Open terminal
-                            {toggleTerminalHotkey && <Kbd>{toggleTerminalHotkey}</Kbd>}
-                          </TooltipContent>
-                        </Tooltip>
-                      )
-                    )
-                  )}
                 {/* Restore Button - shows when viewing archived workspace (desktop only) */}
                 {!isMobileFullscreen && isArchived && (
                   <Tooltip delayDuration={500}>
@@ -7064,15 +7013,6 @@ Make sure to preserve all functionality from both branches when resolving confli
           </DiffFullPageView>
         )}
 
-        {/* Terminal Sidebar - shows when worktree exists (desktop only) */}
-        {worktreePath && (
-          <TerminalSidebar
-            chatId={chatId}
-            cwd={worktreePath}
-            workspaceId={chatId}
-          />
-        )}
-
         {/* Open Locally Dialog - for importing sandbox chats to local */}
         <OpenLocallyDialog
           isOpen={openLocallyDialogOpen}
@@ -7083,65 +7023,8 @@ Make sure to preserve all functionality from both branches when resolving confli
           remoteSubChatId={activeSubChatId}
         />
 
-        {/* Unified Details Sidebar - combines all right sidebars into one (rightmost) */}
-        {/* Show for both local (worktreePath) and remote (sandboxId) chats */}
-        {isUnifiedSidebarEnabled && !isMobileFullscreen && (worktreePath || sandboxId) && (
-          <DetailsSidebar
-            chatId={chatId}
-            worktreePath={worktreePath}
-            planPath={currentPlanPath}
-            mode={currentMode}
-            onBuildPlan={handleApprovePlanFromSidebar}
-            planRefetchTrigger={planEditRefetchTrigger}
-            activeSubChatId={activeSubChatIdForPlan}
-            isPlanSidebarOpen={isPlanSidebarOpen && !!currentPlanPath}
-            isTerminalSidebarOpen={isTerminalSidebarOpen}
-            isDiffSidebarOpen={isDiffSidebarOpen}
-            diffDisplayMode={diffDisplayMode}
-            canOpenDiff={canOpenDiff}
-            setIsDiffSidebarOpen={setIsDiffSidebarOpen}
-            diffStats={diffStats}
-            parsedFileDiffs={parsedFileDiffs}
-            onCommit={handleCommitToPr}
-            isCommitting={isCommittingToPr}
-            onExpandTerminal={() => setIsTerminalSidebarOpen(true)}
-            onExpandPlan={() => setIsPlanSidebarOpen(true)}
-            onExpandDiff={() => setIsDiffSidebarOpen(true)}
-            onFileSelect={(filePath) => {
-              // Set the selected file path
-              setSelectedFilePath(filePath)
-              // Set filtered files to just this file
-              setFilteredDiffFiles([filePath])
-              // Open the diff sidebar
-              setIsDiffSidebarOpen(true)
-            }}
-            remoteInfo={remoteInfo}
-            isRemoteChat={!!remoteInfo}
-          />
-        )}
       </div>
 
-      {/* Terminal Bottom Panel — renders below the main row when displayMode is "bottom" */}
-      {terminalDisplayMode === "bottom" && worktreePath && !isMobileFullscreen && (
-        <ResizableBottomPanel
-          isOpen={isTerminalSidebarOpen}
-          onClose={() => setIsTerminalSidebarOpen(false)}
-          heightAtom={terminalBottomHeightAtom}
-          minHeight={150}
-          maxHeight={500}
-          showResizeTooltip={true}
-          closeHotkey={toggleTerminalHotkey ?? undefined}
-          className="bg-background border-t"
-          style={{ borderTopWidth: "0.5px" }}
-        >
-          <TerminalBottomPanelContent
-            chatId={chatId}
-            cwd={worktreePath}
-            workspaceId={chatId}
-            onClose={() => setIsTerminalSidebarOpen(false)}
-          />
-        </ResizableBottomPanel>
-      )}
     </div>
     </TextSelectionProvider>
     </FileOpenProvider>
