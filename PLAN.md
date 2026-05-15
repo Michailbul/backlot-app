@@ -44,7 +44,7 @@ Fixed: direct Backlot editor saves no longer leave clean files as pending change
 
 Fixed: project forking now refuses parent-repo git roots and requires an exact Backlot project repo root before creating worktrees. Folder open/create paths normalize projects into `~/.backlot/projects/<slug>/`, and an explicit project normalizer repairs older rows. Repaired the active Daddy Issues app DB row and chats to point at `/Users/michael/.backlot/projects/daddy-issues` instead of the nested `laniameda-hq/AI Creatorship/daddy-issues` source.
 
-Fixed: removed the local OpenAI Codex CLI downloader/execution path after macOS Gatekeeper blocked the downloaded `codex` binary. The checked local 1code app has Codex disabled and does not bundle or execute that CLI; Backlot now refuses CLI-backed Codex login/MCP management and keeps Codex chat on the app-managed API-key ACP path.
+Fixed: restored Codex CLI-backed subscription auth to match the current `21st-dev/1Code` implementation: bundled Codex downloader, `codex login` OAuth, `login status`, logout, and `mcp list --json` discovery are active again. Recorded `21st-dev/1Code` and `pingdotgg/t3code` as the ground-truth Codex/Claude auth references in `AGENTS.md` and `CLAUDE.md`; app-managed Codex API keys remain available as an override and now persist through main-process `safeStorage` with migration from the old renderer localStorage key.
 
 Fixed: Backlot thread creation now supports explicit provider selection. The workdesk thread menu and standard thread selector expose Branch into Claude, Branch into Codex, Start new chat with Claude, and Start new chat with Codex; the create-sub-chat mutation persists that provider and strips stale resume metadata when branching from an existing thread.
 

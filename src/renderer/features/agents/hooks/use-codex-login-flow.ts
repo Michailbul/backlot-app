@@ -55,7 +55,7 @@ export function useCodexLoginFlow() {
   const [url, setUrl] = useState<string | null>(null)
   const [output, setOutput] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
-  const [method, setMethod] = useState<CodexAuthMethod>("api_key")
+  const [method, setMethod] = useState<CodexAuthMethod>("chatgpt")
   const [storedApiKey, setStoredApiKey] = useAtom(codexApiKeyAtom)
   const [apiKeyInput, setApiKeyInput] = useState<string>(storedApiKey)
 
@@ -65,11 +65,16 @@ export function useCodexLoginFlow() {
   const verifyingSessionRef = useRef<string | null>(null)
   const successToastSessionRef = useRef<string | null>(null)
   const lastErrorToastRef = useRef<string | null>(null)
+  const migratedLegacyApiKeyRef = useRef<string | null>(null)
 
   const startLoginMutation = trpc.codex.startLogin.useMutation()
   const cancelLoginMutation = trpc.codex.cancelLogin.useMutation()
+  const setStoredApiKeyMutation = trpc.codex.setStoredApiKey.useMutation()
   const openExternalMutation = trpc.external.openExternal.useMutation()
   const trpcUtils = trpc.useUtils()
+  const storedApiKeyQuery = trpc.codex.getStoredApiKey.useQuery(undefined, {
+    staleTime: 0,
+  })
 
   const sessionQuery = trpc.codex.getLoginSession.useQuery(
     { sessionId: sessionId || "" },
@@ -81,8 +86,42 @@ export function useCodexLoginFlow() {
   )
 
   useEffect(() => {
-    setApiKeyInput(storedApiKey)
-  }, [storedApiKey])
+    const secureApiKey = normalizeCodexApiKey(
+      storedApiKeyQuery.data?.apiKey || "",
+    )
+    const legacyApiKey = normalizeCodexApiKey(storedApiKey)
+    const nextApiKey = secureApiKey || legacyApiKey || ""
+
+    setApiKeyInput(nextApiKey)
+
+    if (
+      !secureApiKey &&
+      legacyApiKey &&
+      migratedLegacyApiKeyRef.current !== legacyApiKey
+    ) {
+      migratedLegacyApiKeyRef.current = legacyApiKey
+      void setStoredApiKeyMutation
+        .mutateAsync({ apiKey: legacyApiKey })
+        .then(async () => {
+          setStoredApiKey("")
+          await trpcUtils.codex.getStoredApiKey.invalidate()
+        })
+        .catch(() => {
+          migratedLegacyApiKeyRef.current = null
+        })
+      return
+    }
+
+    if (secureApiKey && storedApiKey) {
+      setStoredApiKey("")
+    }
+  }, [
+    setStoredApiKey,
+    setStoredApiKeyMutation,
+    storedApiKey,
+    storedApiKeyQuery.data?.apiKey,
+    trpcUtils,
+  ])
 
   const notifyError = useCallback((message: string) => {
     if (lastErrorToastRef.current === message) {
@@ -148,16 +187,24 @@ export function useCodexLoginFlow() {
       return false
     }
 
-    setStoredApiKey(normalized)
+    await setStoredApiKeyMutation.mutateAsync({ apiKey: normalized })
+    setStoredApiKey("")
     setSessionId(null)
     setUrl(null)
     setOutput("Using app-managed API key")
     setError(null)
     setState("success")
+    await trpcUtils.codex.getStoredApiKey.invalidate()
     await trpcUtils.codex.getIntegration.invalidate()
     toast.success("Codex API key saved", { duration: 10000 })
     return true
-  }, [apiKeyInput, notifyError, setStoredApiKey, trpcUtils])
+  }, [
+    apiKeyInput,
+    notifyError,
+    setStoredApiKey,
+    setStoredApiKeyMutation,
+    trpcUtils,
+  ])
 
   const start = useCallback(async () => {
     if (method === "api_key") {
@@ -228,7 +275,7 @@ export function useCodexLoginFlow() {
       setUrl(session.url || null)
       setOutput(session.output || "")
       setError(session.error || null)
-      toast.info("Waiting for Codex sign-in")
+      toast.info("Waiting for Codex sign-in in your browser")
     } catch (startError) {
       if (wasCancelled()) {
         return

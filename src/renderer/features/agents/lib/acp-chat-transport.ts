@@ -65,6 +65,23 @@ async function resolveCodexCredentialsForAuthError(): Promise<{
 }> {
   const snapshot = getStoredCodexCredentials()
 
+  let hasApiKey = snapshot.hasApiKey
+  try {
+    const storedApiKey = await trpcClient.codex.getStoredApiKey.query()
+    const secureApiKey = normalizeCodexApiKey(storedApiKey.apiKey)
+    const legacyApiKey = normalizeCodexApiKey(appStore.get(codexApiKeyAtom))
+    hasApiKey = Boolean(secureApiKey || legacyApiKey)
+
+    if (!secureApiKey && legacyApiKey) {
+      await trpcClient.codex.setStoredApiKey.mutate({ apiKey: legacyApiKey })
+      appStore.set(codexApiKeyAtom, "")
+    } else if (secureApiKey && legacyApiKey) {
+      appStore.set(codexApiKeyAtom, "")
+    }
+  } catch {
+    hasApiKey = snapshot.hasApiKey
+  }
+
   let hasSubscription = false
   try {
     const integration = await trpcClient.codex.getIntegration.query()
@@ -74,10 +91,36 @@ async function resolveCodexCredentialsForAuthError(): Promise<{
   }
 
   return {
-    hasApiKey: snapshot.hasApiKey,
+    hasApiKey,
     hasSubscription,
-    hasAny: snapshot.hasApiKey || hasSubscription,
+    hasAny: hasApiKey || hasSubscription,
   }
+}
+
+async function resolveCodexApiKeyForRequest(): Promise<string | null> {
+  const legacyApiKey = normalizeCodexApiKey(appStore.get(codexApiKeyAtom))
+
+  try {
+    const storedApiKey = await trpcClient.codex.getStoredApiKey.query()
+    const secureApiKey = normalizeCodexApiKey(storedApiKey.apiKey)
+
+    if (secureApiKey) {
+      if (legacyApiKey) {
+        appStore.set(codexApiKeyAtom, "")
+      }
+      return secureApiKey
+    }
+
+    if (legacyApiKey) {
+      await trpcClient.codex.setStoredApiKey.mutate({ apiKey: legacyApiKey })
+      appStore.set(codexApiKeyAtom, "")
+      return legacyApiKey
+    }
+  } catch {
+    return legacyApiKey
+  }
+
+  return null
 }
 
 function enqueueSafely(
@@ -170,7 +213,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     if (forceNewSession) {
       forceFreshSessionSubChats.delete(this.config.subChatId)
     }
-    const codexApiKey = normalizeCodexApiKey(appStore.get(codexApiKeyAtom))
+    const codexApiKey = await resolveCodexApiKeyForRequest()
     const selectedModel = getSelectedCodexModel(this.config.subChatId)
 
     return new ReadableStream({

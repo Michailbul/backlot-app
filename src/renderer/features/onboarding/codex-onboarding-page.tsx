@@ -1,8 +1,8 @@
 "use client"
 
-import { useSetAtom } from "jotai"
+import { useAtomValue, useSetAtom } from "jotai"
 import { ChevronLeft } from "lucide-react"
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { CodexLoginContent } from "../agents/components/codex-login-content"
 import { useCodexLoginFlow } from "../agents/hooks/use-codex-login-flow"
 import {
@@ -12,11 +12,15 @@ import {
 } from "../../lib/atoms"
 
 export function CodexOnboardingPage() {
+  const billingMethod = useAtomValue(billingMethodAtom)
   const setBillingMethod = useSetAtom(billingMethodAtom)
   const setCodexOnboardingCompleted = useSetAtom(codexOnboardingCompletedAtom)
   const setCodexOnboardingAuthMethod = useSetAtom(codexOnboardingAuthMethodAtom)
   const didAutoStartRef = useRef(false)
-  const onboardingMethod = "api_key"
+  const onboardingMethod = useMemo(() => {
+    if (billingMethod === "codex-api-key") return "api_key"
+    return "chatgpt"
+  }, [billingMethod])
 
   const {
     state,
@@ -43,6 +47,8 @@ export function CodexOnboardingPage() {
       return
     }
 
+    // Wait until flow state reflects selected onboarding method to avoid
+    // triggering OAuth from the default "chatgpt" value on first render.
     if (method !== onboardingMethod) {
       return
     }

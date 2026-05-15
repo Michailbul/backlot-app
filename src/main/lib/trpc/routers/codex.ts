@@ -3,7 +3,8 @@ import { observable } from "@trpc/server/observable"
 import { streamText } from "ai"
 import { eq } from "drizzle-orm"
 import { app } from "electron"
-import { createHash } from "node:crypto"
+import { spawn, type ChildProcess } from "node:child_process"
+import { createHash, randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
 import { readdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
@@ -14,6 +15,13 @@ import {
   normalizeCodexStreamChunk,
 } from "../../../../shared/codex-tool-normalizer"
 import { getClaudeShellEnvironment } from "../../claude/env"
+import {
+  clearStoredCodexApiKey,
+  hasStoredCodexApiKey,
+  isCodexApiKeyEncryptionAvailable,
+  loadStoredCodexApiKey,
+  saveStoredCodexApiKey,
+} from "../../codex/credentials"
 import { resolveProjectPathFromWorktree } from "../../claude-config"
 import { getDatabase, getDatabasePath, projects as projectsTable, subChats } from "../../db"
 import {
@@ -44,7 +52,7 @@ type CodexLoginSessionState =
 
 type CodexLoginSession = {
   id: string
-  process: null
+  process: ChildProcess | null
   state: CodexLoginSessionState
   output: string
   url: string | null
@@ -208,8 +216,6 @@ const DEFAULT_CODEX_MODEL = "gpt-5.5/high"
 const CODEX_MCP_TOOLS_FETCH_TIMEOUT_MS = 40_000
 const CODEX_USAGE_POLL_ATTEMPTS = 3
 const CODEX_USAGE_POLL_INTERVAL_MS = 200
-const CODEX_CLI_DISABLED_MESSAGE =
-  "Codex CLI-backed login and MCP management are disabled in Backlot local dev. 1code does not bundle or execute the OpenAI Codex CLI; use the app-managed Codex API key path instead."
 
 type CodexTokenUsage = {
   input_tokens?: number
@@ -302,6 +308,31 @@ function resolveCodexAcpBinaryPath(): string {
   })
 
   return toUnpackedAsarPath(resolvedPath)
+}
+
+function resolveBundledCodexCliPath(): string {
+  const binaryName = process.platform === "win32" ? "codex.exe" : "codex"
+  const resourcesDir = app.isPackaged
+    ? join(process.resourcesPath, "bin")
+    : join(
+        app.getAppPath(),
+        "resources",
+        "bin",
+        `${process.platform}-${process.arch}`,
+      )
+
+  const binaryPath = join(resourcesDir, binaryName)
+  if (existsSync(binaryPath)) {
+    return binaryPath
+  }
+
+  const hint = app.isPackaged
+    ? "Binary is missing from bundled resources."
+    : "Run `bun run codex:download` to download it for local dev."
+
+  throw new Error(
+    `[codex] Bundled Codex CLI not found at ${binaryPath}. ${hint}`,
+  )
 }
 
 function stripAnsi(input: string): string {
@@ -399,15 +430,49 @@ type RunCodexCliOptions = {
 
 async function runCodexCli(
   args: string[],
-  _options?: RunCodexCliOptions,
+  options?: RunCodexCliOptions,
 ): Promise<{
   stdout: string
   stderr: string
   exitCode: number | null
 }> {
-  throw new Error(
-    `${CODEX_CLI_DISABLED_MESSAGE} Refused to execute \`codex ${args.join(" ")}\`.`,
-  )
+  const codexCliPath = resolveBundledCodexCliPath()
+  const cwd = options?.cwd?.trim()
+
+  return await new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(codexCliPath, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      cwd: cwd && cwd.length > 0 ? cwd : undefined,
+      env: process.env,
+      windowsHide: true,
+    })
+
+    let stdout = ""
+    let stderr = ""
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8")
+    })
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8")
+    })
+
+    child.once("error", (error) => {
+      rejectPromise(
+        new Error(
+          `[codex] Failed to execute \`codex ${args.join(" ")}\`: ${error.message}`,
+        ),
+      )
+    })
+
+    child.once("close", (exitCode) => {
+      resolvePromise({
+        stdout: stripAnsi(stdout),
+        stderr: stripAnsi(stderr),
+        exitCode,
+      })
+    })
+  })
 }
 
 async function runCodexCliChecked(
@@ -818,16 +883,129 @@ async function resolveCodexMcpSnapshot(params: {
     return cached
   }
 
+  const result = await runCodexCliChecked(["mcp", "list", "--json"], {
+    cwd: lookupPath === "__global__" ? undefined : lookupPath,
+  })
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(result.stdout)
+  } catch {
+    throw new Error("Failed to parse Codex MCP list JSON output.")
+  }
+
+  const entries = z.array(codexMcpListEntrySchema).parse(parsed)
+  const mcpServersForSession: CodexMcpServerForSession[] = []
+  const mcpServersForSettings: CodexMcpServerForSettings[] = []
+
+  const convertedEntries = await Promise.all(
+    entries.map(async (entry) => {
+      const transportType = entry.transport.type.trim().toLowerCase()
+      const authState = getCodexMcpAuthState(entry.auth_status)
+      const includeInSession = entry.enabled
+      const resolvedStdioEnv = resolveCodexStdioEnv(entry.transport)
+      const resolvedHttpHeaders = resolveCodexHttpHeaders(entry.transport)
+      let status: CodexMcpServerForSettings["status"] = !entry.enabled
+        ? "failed"
+        : authState.needsAuth
+          ? "needs-auth"
+          : "connected"
+
+      const settingsConfig: Record<string, unknown> = {
+        transportType: entry.transport.type,
+        authStatus: entry.auth_status ?? "unknown",
+        enabled: entry.enabled,
+        disabledReason: entry.disabled_reason ?? undefined,
+      }
+
+      let sessionServer: CodexMcpServerForSession | null = null
+      if (transportType === "stdio") {
+        const command = entry.transport.command || undefined
+        const args = entry.transport.args || undefined
+        if (includeInSession && command) {
+          const envPairs = objectToPairs(resolvedStdioEnv) || []
+          sessionServer = {
+            name: entry.name,
+            type: "stdio",
+            command,
+            args: Array.isArray(args) ? args : [],
+            env: envPairs,
+          }
+        }
+
+        settingsConfig.command = command
+        settingsConfig.args = args
+        settingsConfig.env = entry.transport.env || undefined
+        settingsConfig.envVars = entry.transport.env_vars || undefined
+      } else if (
+        transportType === "streamable_http" ||
+        transportType === "http" ||
+        transportType === "sse"
+      ) {
+        const url = entry.transport.url || undefined
+        const headers = objectToPairs(resolvedHttpHeaders)
+        if (includeInSession && url) {
+          sessionServer = {
+            name: entry.name,
+            type: "http",
+            url,
+            headers: headers || [],
+          }
+        }
+
+        settingsConfig.url = url
+        settingsConfig.headers = entry.transport.http_headers || undefined
+        settingsConfig.envHttpHeaders = entry.transport.env_http_headers || undefined
+        settingsConfig.bearerTokenEnvVar =
+          entry.transport.bearer_token_env_var || undefined
+      }
+
+      const shouldProbeTools =
+        shouldIncludeTools &&
+        includeInSession &&
+        !authState.needsAuth &&
+        (
+          // Probe unauthenticated/public servers and stdio servers.
+          !authState.supportsAuth ||
+          transportType === "stdio" ||
+          // For auth-capable HTTP, only probe if explicit auth header is available.
+          Boolean(resolvedHttpHeaders?.Authorization)
+        )
+      const tools = shouldProbeTools ? await fetchCodexMcpTools(entry) : []
+      if (shouldProbeTools && tools.length === 0) {
+        status = "failed"
+      }
+
+      return {
+        sessionServer,
+        settingsServer: {
+          name: entry.name,
+          status,
+          tools,
+          needsAuth: authState.needsAuth,
+          config: settingsConfig,
+        } satisfies CodexMcpServerForSettings,
+      }
+    }),
+  )
+
+  for (const converted of convertedEntries) {
+    if (converted.sessionServer) {
+      mcpServersForSession.push(converted.sessionServer)
+    }
+    mcpServersForSettings.push(converted.settingsServer)
+  }
+
   const snapshot: CodexMcpSnapshot = {
-    mcpServersForSession: [],
+    mcpServersForSession,
     groups: [
       {
         groupName: "Global",
         projectPath: null,
-        mcpServers: [],
+        mcpServers: mcpServersForSettings,
       },
     ],
-    fingerprint: getCodexMcpFingerprint([]),
+    fingerprint: getCodexMcpFingerprint(mcpServersForSession),
     fetchedAt: Date.now(),
     toolsResolved: shouldIncludeTools,
   }
@@ -1185,21 +1363,151 @@ function cleanupProvider(subChatId: string): void {
 }
 
 export const codexRouter = router({
-  getIntegration: publicProcedure.query(() => {
+  getStoredApiKey: publicProcedure.query(() => {
+    const apiKey = loadStoredCodexApiKey()
     return {
-      state: "unknown" as const,
-      isConnected: false,
-      rawOutput: CODEX_CLI_DISABLED_MESSAGE,
-      exitCode: null,
+      apiKey: apiKey || "",
+      hasKey: Boolean(apiKey),
+      encryptionAvailable: isCodexApiKeyEncryptionAvailable(),
     }
   }),
 
-  logout: publicProcedure.mutation(() => {
-    throw new Error(CODEX_CLI_DISABLED_MESSAGE)
+  setStoredApiKey: publicProcedure
+    .input(
+      z.object({
+        apiKey: z.string(),
+      }),
+    )
+    .mutation(({ input }) => {
+      const normalized = input.apiKey.trim()
+      if (!normalized) {
+        clearStoredCodexApiKey()
+        return {
+          success: true,
+          hasKey: false,
+          encryptionAvailable: isCodexApiKeyEncryptionAvailable(),
+        }
+      }
+
+      saveStoredCodexApiKey(normalized)
+      return {
+        success: true,
+        hasKey: hasStoredCodexApiKey(),
+        encryptionAvailable: isCodexApiKeyEncryptionAvailable(),
+      }
+    }),
+
+  getIntegration: publicProcedure.query(async () => {
+    const result = await runCodexCli(["login", "status"])
+    const combinedOutput = [result.stdout, result.stderr]
+      .filter((chunk) => chunk.trim().length > 0)
+      .join("\n")
+      .trim()
+
+    const state = normalizeCodexIntegrationState(combinedOutput)
+
+    return {
+      state,
+      isConnected:
+        state === "connected_chatgpt" || state === "connected_api_key",
+      rawOutput: combinedOutput,
+      exitCode: result.exitCode,
+    }
+  }),
+
+  logout: publicProcedure.mutation(async () => {
+    const logoutResult = await runCodexCli(["logout"])
+    const statusResult = await runCodexCli(["login", "status"])
+
+    const statusOutput = [statusResult.stdout, statusResult.stderr]
+      .filter((chunk) => chunk.trim().length > 0)
+      .join("\n")
+      .trim()
+
+    const state = normalizeCodexIntegrationState(statusOutput)
+    const isConnected =
+      state === "connected_chatgpt" || state === "connected_api_key"
+
+    if (isConnected) {
+      throw new Error("Failed to log out from Codex. Please try again.")
+    }
+
+    const logoutOutput = [logoutResult.stdout, logoutResult.stderr]
+      .filter((chunk) => chunk.trim().length > 0)
+      .join("\n")
+      .trim()
+
+    return {
+      success: true,
+      state,
+      isConnected: false,
+      logoutExitCode: logoutResult.exitCode,
+      logoutOutput,
+      statusOutput,
+    }
   }),
 
   startLogin: publicProcedure.mutation(() => {
-    throw new Error(CODEX_CLI_DISABLED_MESSAGE)
+    const existingSession = getActiveLoginSession()
+    if (existingSession) {
+      return toLoginSessionResponse(existingSession)
+    }
+
+    const codexCliPath = resolveBundledCodexCliPath()
+    const sessionId = randomUUID()
+
+    const child = spawn(codexCliPath, ["login"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+      windowsHide: true,
+    })
+
+    const session: CodexLoginSession = {
+      id: sessionId,
+      process: child,
+      state: "running",
+      output: "",
+      url: null,
+      error: null,
+      exitCode: null,
+    }
+
+    const handleChunk = (chunk: Buffer | string) => {
+      appendLoginOutput(session, chunk.toString("utf8"))
+    }
+
+    child.stdout.on("data", handleChunk)
+    child.stderr.on("data", handleChunk)
+
+    child.once("error", (error) => {
+      session.state = "error"
+      session.error = error.message
+      session.exitCode = null
+      session.process = null
+    })
+
+    child.once("close", (exitCode) => {
+      session.exitCode = exitCode
+      session.process = null
+
+      if (session.state === "cancelled") {
+        return
+      }
+
+      if (exitCode === 0) {
+        session.state = "success"
+        session.error = null
+        return
+      }
+
+      session.state = "error"
+      session.error =
+        session.output.trim() ||
+        `Codex login exited with code ${exitCode ?? "unknown"}`
+    })
+
+    loginSessions.set(sessionId, session)
+    return toLoginSessionResponse(session)
   }),
 
   getLoginSession: publicProcedure
@@ -1231,6 +1539,9 @@ export const codexRouter = router({
 
       session.state = "cancelled"
       session.error = null
+      if (session.process && !session.process.killed) {
+        session.process.kill("SIGTERM")
+      }
 
       return { success: true, found: true, session: toLoginSessionResponse(session) }
     }),
@@ -1434,9 +1745,12 @@ export const codexRouter = router({
             const existingMessages = parseStoredMessages(existingSubChat.messages)
             const requestedModelId =
               extractCodexModelId(input.model) || DEFAULT_CODEX_MODEL
+            const storedApiKey = loadStoredCodexApiKey()
+            const effectiveAuthConfig =
+              input.authConfig || (storedApiKey ? { apiKey: storedApiKey } : undefined)
             const selectedModelId = preprocessCodexModelName({
               modelId: requestedModelId,
-              authConfig: input.authConfig,
+              authConfig: effectiveAuthConfig,
             })
             const metadataModel = selectedModelId
 
@@ -1562,7 +1876,7 @@ export const codexRouter = router({
                 input.forceNewSession
                   ? undefined
                   : input.sessionId ?? getLastSessionId(existingMessages),
-              authConfig: input.authConfig,
+              authConfig: effectiveAuthConfig,
             })
 
             const startedAt = Date.now()

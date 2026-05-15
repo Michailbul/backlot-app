@@ -1,11 +1,12 @@
 "use client"
 
 import { useSetAtom } from "jotai"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Check } from "lucide-react"
 
 import {
   ClaudeCodeIcon,
+  CodexIcon,
   KeyFilledIcon,
   SettingsFilledIcon,
 } from "../../components/ui/icons"
@@ -55,6 +56,15 @@ const billingOptions: BillingOption[] = [
     icon: <SettingsFilledIcon className="w-5 h-5" />,
   },
   {
+    id: "codex-subscription",
+    method: "codex-subscription",
+    group: "codex",
+    title: "Codex Subscription",
+    subtitle: "Use your Codex ChatGPT login.",
+    recommended: true,
+    icon: <CodexIcon className="w-5 h-5" />,
+  },
+  {
     id: "codex-api-key",
     method: "codex-api-key",
     group: "codex",
@@ -72,17 +82,22 @@ export function BillingMethodPage() {
   const [selectedOptionId, setSelectedOptionId] =
     useState<string>("claude-subscription")
 
-  const visibleOptions = billingOptions.filter(
-    (option) => option.group === selectedGroup,
+  const visibleOptions = useMemo(
+    () => billingOptions.filter((option) => option.group === selectedGroup),
+    [selectedGroup],
   )
-  const selectedOption =
-    billingOptions.find((option) => option.id === selectedOptionId) ||
-    billingOptions[0]!
+
+  const selectedOption = useMemo(() => {
+    const found = billingOptions.find((option) => option.id === selectedOptionId)
+    return found || billingOptions[0]!
+  }, [selectedOptionId])
 
   const handleContinue = () => {
     if (
+      selectedOption.method === "codex-subscription" ||
       selectedOption.method === "codex-api-key"
     ) {
+      // Force Codex onboarding step when user explicitly chooses a Codex auth mode.
       setCodexOnboardingCompleted(false)
     }
 
@@ -128,7 +143,7 @@ export function BillingMethodPage() {
             type="button"
             onClick={() => {
               setSelectedGroup("codex")
-              setSelectedOptionId("codex-api-key")
+              setSelectedOptionId("codex-subscription")
             }}
             className={cn(
               "h-8 flex-1 rounded-full text-sm font-medium transition-colors",
@@ -169,6 +184,8 @@ export function BillingMethodPage() {
                     "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
                     option.id === "claude-subscription"
                       ? "bg-[#D97757] text-white"
+                      : option.id === "codex-subscription"
+                        ? "bg-white text-black"
                       : selectedOptionId === option.id
                         ? "bg-foreground text-background"
                         : "bg-muted text-muted-foreground"

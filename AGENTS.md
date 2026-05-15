@@ -55,7 +55,9 @@ When working in this repo, do not re-implement what 1code already provides. The 
 
 ## Useful upstream references
 
-- 1code source (forked): `~/work/1code/` (read-only reference; do not modify)
+- Current 1Code source: `https://github.com/21st-dev/1Code` (primary ground truth for Codex/Claude auth, bundled CLI download, ACP transport, OAuth/login status, and MCP config behavior). For local comparison, clone fresh into `/private/tmp` instead of relying on stale checkouts.
+- T3 Code source: `https://github.com/pingdotgg/t3code` (secondary ground truth for Codex CLI auth/runtime behavior: installed `codex`, `codex login`, `CODEX_HOME`/shadow-home account handling, and `codex app-server` provider orchestration).
+- 1code source (forked): `~/work/1code/` (legacy read-only reference; do not use as the authority for current Codex auth support)
 - Studio brand ground truth: `~/work/laniameda/laniameda-hq/studio/brand/`
 - Skills registry: `~/work/laniameda/laniameda-hq/laniameda-skills/`
 

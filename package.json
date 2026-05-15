@@ -21,6 +21,8 @@
     "dist:manifest": "node scripts/generate-update-manifest.mjs",
     "claude:download": "node scripts/download-claude-binary.mjs --version=2.1.25",
     "claude:download:all": "node scripts/download-claude-binary.mjs --version=2.1.25 --all",
+    "codex:download": "node scripts/download-codex-binary.mjs --version=0.98.0",
+    "codex:download:all": "node scripts/download-codex-binary.mjs --version=0.98.0 --all",
     "icon:generate": "node scripts/generate-icon.mjs",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",

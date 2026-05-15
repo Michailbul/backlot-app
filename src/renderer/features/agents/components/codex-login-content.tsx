@@ -63,7 +63,7 @@ export function CodexLoginContent({
           <p className="text-sm text-muted-foreground">
             {isApiKeyMode
               ? "Connect with your API key"
-              : "Subscription login is unavailable in Backlot local dev"}
+              : "Connect your Codex subscription"}
           </p>
 
           {!isApiKeyMode && url && (

@@ -272,6 +272,11 @@ export function AgentsModelsTab() {
   const [storedCodexApiKey, setStoredCodexApiKey] = useAtom(codexApiKeyAtom)
   const [codexApiKey, setCodexApiKey] = useState(storedCodexApiKey)
   const [isSavingCodexApiKey, setIsSavingCodexApiKey] = useState(false)
+  const { data: storedCodexApiKeyData } = trpc.codex.getStoredApiKey.useQuery(
+    undefined,
+    { staleTime: 0 },
+  )
+  const setStoredCodexApiKeyMutation = trpc.codex.setStoredApiKey.useMutation()
   const codexOnboardingCompleted = useAtomValue(codexOnboardingCompletedAtom)
   const codexOnboardingAuthMethod = useAtomValue(codexOnboardingAuthMethodAtom)
   const [storedOpenAIKey, setStoredOpenAIKey] = useAtom(openaiApiKeyAtom)
@@ -290,11 +295,46 @@ export function AgentsModelsTab() {
     setOpenaiKey(storedOpenAIKey)
   }, [storedOpenAIKey])
 
-  useEffect(() => {
-    setCodexApiKey(storedCodexApiKey)
-  }, [storedCodexApiKey])
-
   const savedConfigRef = useRef(storedConfig)
+  const migratedLegacyCodexApiKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const secureApiKey = normalizeCodexApiKey(
+      storedCodexApiKeyData?.apiKey || "",
+    )
+    const legacyApiKey = normalizeCodexApiKey(storedCodexApiKey)
+    const nextApiKey = secureApiKey || legacyApiKey || ""
+
+    setCodexApiKey(nextApiKey)
+
+    if (
+      !secureApiKey &&
+      legacyApiKey &&
+      migratedLegacyCodexApiKeyRef.current !== legacyApiKey
+    ) {
+      migratedLegacyCodexApiKeyRef.current = legacyApiKey
+      void setStoredCodexApiKeyMutation
+        .mutateAsync({ apiKey: legacyApiKey })
+        .then(async () => {
+          setStoredCodexApiKey("")
+          await trpcUtils.codex.getStoredApiKey.invalidate()
+        })
+        .catch(() => {
+          migratedLegacyCodexApiKeyRef.current = null
+        })
+      return
+    }
+
+    if (secureApiKey && storedCodexApiKey) {
+      setStoredCodexApiKey("")
+    }
+  }, [
+    setStoredCodexApiKey,
+    setStoredCodexApiKeyMutation,
+    storedCodexApiKey,
+    storedCodexApiKeyData?.apiKey,
+    trpcUtils,
+  ])
 
   const handleBlurSave = useCallback(() => {
     const trimmedModel = model.trim()
@@ -363,7 +403,9 @@ export function AgentsModelsTab() {
     }
   }
 
-  const normalizedStoredCodexApiKey = normalizeCodexApiKey(storedCodexApiKey)
+  const normalizedStoredCodexApiKey =
+    normalizeCodexApiKey(storedCodexApiKeyData?.apiKey || "") ||
+    normalizeCodexApiKey(storedCodexApiKey)
   const hasAppCodexApiKey = Boolean(normalizedStoredCodexApiKey)
   const hasLocalCodexSubscription =
     codexOnboardingCompleted && codexOnboardingAuthMethod === "chatgpt"
@@ -386,20 +428,22 @@ export function AgentsModelsTab() {
   const handleCodexApiKeyBlur = async () => {
     const trimmedKey = codexApiKey.trim()
 
-    if (trimmedKey === storedCodexApiKey) return
+    if (trimmedKey === normalizedStoredCodexApiKey) return
     if (!trimmedKey) return
 
     const normalized = normalizeCodexApiKey(trimmedKey)
     if (!normalized) {
       toast.error("Invalid Codex API key format. Key should start with 'sk-'")
-      setCodexApiKey(storedCodexApiKey)
+      setCodexApiKey(normalizedStoredCodexApiKey || "")
       return
     }
 
     setIsSavingCodexApiKey(true)
     try {
-      setStoredCodexApiKey(normalized)
+      await setStoredCodexApiKeyMutation.mutateAsync({ apiKey: normalized })
+      setStoredCodexApiKey("")
       setCodexApiKey(normalized)
+      await trpcUtils.codex.getStoredApiKey.invalidate()
       await trpcUtils.codex.getIntegration.invalidate()
       toast.success("Codex API key saved")
     } catch {
@@ -414,6 +458,7 @@ export function AgentsModelsTab() {
     try {
       setStoredCodexApiKey("")
       setCodexApiKey("")
+      await setStoredCodexApiKeyMutation.mutateAsync({ apiKey: "" })
 
       if (codexIntegration?.state === "connected_api_key") {
         await codexLogoutMutation.mutateAsync().catch(() => {
@@ -421,6 +466,7 @@ export function AgentsModelsTab() {
         })
       }
 
+      await trpcUtils.codex.getStoredApiKey.invalidate()
       await trpcUtils.codex.getIntegration.invalidate()
       toast.success("Codex API key removed")
     } catch {
@@ -578,7 +624,7 @@ export function AgentsModelsTab() {
               Codex Account
             </h4>
             <p className="text-xs text-muted-foreground">
-              Manage OpenAI Codex authentication
+              Manage your Codex account
             </p>
           </div>
         </div>
@@ -590,6 +636,47 @@ export function AgentsModelsTab() {
             </div>
           ) : (
             <>
+              <div className="flex items-center justify-between gap-6 p-4 hover:bg-muted/50">
+                <div>
+                  <div className="text-sm font-medium">Codex Subscription</div>
+                  <div className="text-xs text-muted-foreground">
+                    {codexConnectionText}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {isCodexSubscriptionActive && (
+                    <Badge variant="secondary" className="text-xs">
+                      Active
+                    </Badge>
+                  )}
+                  {isCodexSubscriptionConnected ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void handleCodexLogout()}
+                      disabled={codexLogoutMutation.isPending}
+                    >
+                      {codexLogoutMutation.isPending ? "..." : "Logout"}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void handleCodexSetup()}
+                      disabled={
+                        isCodexLoading ||
+                        codexLogoutMutation.isPending ||
+                        isSavingCodexApiKey ||
+                        setStoredCodexApiKeyMutation.isPending
+                      }
+                    >
+                      Connect
+                    </Button>
+                  )}
+                </div>
+              </div>
+
               <div className="flex items-center justify-between gap-6 p-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
@@ -601,7 +688,7 @@ export function AgentsModelsTab() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Stored locally and used for Codex chats
+                    Takes priority over subscription
                   </p>
                 </div>
                 <div className="flex-shrink-0 w-80 flex items-center gap-2">
@@ -618,7 +705,10 @@ export function AgentsModelsTab() {
                       size="icon"
                       variant="ghost"
                       onClick={() => void handleRemoveCodexApiKey()}
-                      disabled={isSavingCodexApiKey}
+                      disabled={
+                        isSavingCodexApiKey ||
+                        setStoredCodexApiKeyMutation.isPending
+                      }
                       aria-label="Remove Codex API key"
                       className="text-muted-foreground hover:text-red-600 hover:bg-red-500/10"
                     >

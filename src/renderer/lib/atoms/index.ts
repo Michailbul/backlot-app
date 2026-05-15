@@ -726,7 +726,7 @@ export const isFullscreenAtom = atom<boolean | null>(null)
 // "claude-subscription" = use Claude Pro/Max via OAuth
 // "api-key" = use Anthropic API key directly
 // "custom-model" = use custom base URL and model (e.g. for proxies or alternative providers)
-// "codex-subscription" = legacy Codex subscription selection; route to API key setup
+// "codex-subscription" = use Codex ChatGPT subscription login
 // "codex-api-key" = use Codex via app-managed OpenAI API key
 // null = not yet selected (show billing method selection screen)
 export type BillingMethod =
@@ -783,7 +783,9 @@ export const codexOnboardingAuthMethodAtom =
     { getOnInit: true },
   )
 
-// App-managed Codex API key (separate from the voice input OpenAI key)
+// Legacy renderer cache for migrating old app-managed Codex API keys into
+// main-process safeStorage. Durable Codex API key storage lives behind
+// trpc.codex.getStoredApiKey/setStoredApiKey.
 export const codexApiKeyAtom = atomWithStorage<string>(
   "onboarding:codex-api-key",
   "",
