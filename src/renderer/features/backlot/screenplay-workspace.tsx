@@ -168,27 +168,8 @@ export function ScreenplayWorkspace({
           className="relative shrink-0 flex flex-col min-w-0 bl-island rounded-2xl overflow-hidden"
           style={{ width: railWidth }}
         >
-          {/* Rail header — actions only (Threads / Fork / Hide). */}
-          <div className="relative flex items-center justify-end gap-2 h-10 px-3 border-b border-border select-none shrink-0">
-            <div className="flex items-center gap-1">
-              <ThreadSwitcher />
-              <ForkActiveButton />
-              <button
-                type="button"
-                onClick={() => setRailOpen(false)}
-                className={cn(
-                  "press flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider",
-                  "text-muted-foreground hover:text-foreground hover:bg-secondary",
-                  "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
-                )}
-                title="Hide assistant (Cmd+\\)"
-                aria-label="Hide assistant"
-              >
-                Hide
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
+          {/* Rail header — a thread tab strip. */}
+          <ThreadTabs />
 
           {/* Chat — existing ChatView, unchanged. */}
           <div className="flex-1 min-h-0 min-w-0 overflow-hidden">{assistant}</div>
@@ -371,6 +352,85 @@ function fallbackColor(chatId: string): string {
   let h = 0
   for (let i = 0; i < chatId.length; i++) h = (h * 31 + chatId.charCodeAt(i)) | 0
   return FALLBACK_PALETTE[Math.abs(h) % FALLBACK_PALETTE.length]
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// ThreadTabs — the assistant rail's header. The workspace's sub-chats
+// ("threads") are shown as a tab strip; the active one is filled, and a
+// trailing + opens a fresh thread. Replaces the old Threads/Fork/Hide
+// dropdown row.
+// ────────────────────────────────────────────────────────────────────────
+
+function ThreadTabs() {
+  const activeChatId = useAtomValue(selectedAgentChatIdAtom)
+  const setThreadCreateRequest = useSetAtom(threadCreateRequestAtom)
+  const activeSubChatId = useAgentSubChatStore((s) => s.activeSubChatId)
+  const allSubChats = useAgentSubChatStore((s) => s.allSubChats)
+  const setActiveSubChat = useAgentSubChatStore((s) => s.setActiveSubChat)
+  const addToOpenSubChats = useAgentSubChatStore((s) => s.addToOpenSubChats)
+
+  // Oldest first, so the tabs read in creation order (thread 1, 2, …).
+  const threads = [...allSubChats].sort((a, b) => {
+    const aT = a.updated_at ? new Date(a.updated_at).getTime() : 0
+    const bT = b.updated_at ? new Date(b.updated_at).getTime() : 0
+    return aT - bT
+  })
+
+  const handleSelect = (id: string) => {
+    if (id === activeSubChatId) return
+    addToOpenSubChats(id)
+    setActiveSubChat(id)
+  }
+
+  const handleNew = () => {
+    if (!activeChatId) return
+    setThreadCreateRequest({
+      id: Date.now(),
+      chatId: activeChatId,
+      options: { kind: "fresh", provider: "claude-code" },
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-1 h-10 px-2 border-b border-border select-none shrink-0 overflow-x-auto scrollbar-hide">
+      {threads.map((thread, i) => {
+        const active = thread.id === activeSubChatId
+        const name = thread.name?.trim() || `Thread ${i + 1}`
+        return (
+          <button
+            key={thread.id}
+            type="button"
+            onClick={() => handleSelect(thread.id)}
+            title={name}
+            className={cn(
+              "press shrink-0 max-w-[150px] truncate rounded-lg px-2.5 py-1 text-[12px]",
+              "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
+              active
+                ? "bg-primary/15 text-foreground font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+            )}
+          >
+            {name}
+          </button>
+        )
+      })}
+      <button
+        type="button"
+        onClick={handleNew}
+        disabled={!activeChatId}
+        title="New thread"
+        aria-label="New thread"
+        className={cn(
+          "press shrink-0 flex items-center justify-center h-6 w-6 rounded-lg",
+          "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+          "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
+          "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100",
+        )}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
 }
 
 // ────────────────────────────────────────────────────────────────────────

@@ -337,7 +337,7 @@ function AppTopBar() {
 
   return (
     <div
-      className="relative z-30 shrink-0 flex items-stretch h-10 bg-background border-b border-border/70"
+      className="relative z-30 shrink-0 flex items-stretch h-10 bg-background"
       style={{
         // @ts-expect-error - WebKit-specific property
         WebkitAppRegion: "drag",
