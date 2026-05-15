@@ -65,10 +65,13 @@ import { cn } from "../../lib/utils"
 const ASSISTANT_RAIL_OPEN_ATOM = atomWithStorage("backlot:assistant-rail-open", true)
 
 // The assistant rail is drag-resizable via the handle on its left edge.
-// These clamp the user-set base width: wide enough for chat bubbles +
-// tool chips, never so wide the screenplay loses the canvas.
-const RAIL_MIN_WIDTH = 320
-const RAIL_MAX_WIDTH = 760
+// It can be made narrower, but never wider than its default: the chat
+// lays out comfortably at the default width, and a wider rail only
+// steals canvas from the screenplay — on a small window it can even
+// push its own right edge off-screen. So default IS the max.
+const RAIL_DEFAULT_WIDTH = 420 // keep in sync with assistantRailWidthAtom
+const RAIL_MIN_WIDTH = 340
+const RAIL_MAX_WIDTH = RAIL_DEFAULT_WIDTH
 
 interface ScreenplayWorkspaceProps {
   chatId: string | null
@@ -84,6 +87,17 @@ export function ScreenplayWorkspace({
 }: ScreenplayWorkspaceProps) {
   const [railOpen, setRailOpen] = useAtom(ASSISTANT_RAIL_OPEN_ATOM)
   const [railUserWidth, setRailUserWidth] = useAtom(assistantRailWidthAtom)
+
+  // Clamp the rendered width to the current bounds, and heal any value
+  // persisted under the old 760px ceiling — without this, a rail dragged
+  // wide in a past session keeps rendering off the window edge.
+  const railWidth = Math.min(
+    RAIL_MAX_WIDTH,
+    Math.max(RAIL_MIN_WIDTH, railUserWidth),
+  )
+  useEffect(() => {
+    if (railUserWidth !== railWidth) setRailUserWidth(railWidth)
+  }, [railUserWidth, railWidth, setRailUserWidth])
 
   // Cmd+\ (or Ctrl+\) toggles the assistant rail. Single keystroke, mirrors
   // VS Code / Cursor's secondary-sidebar shortcut. Saves the user from
@@ -185,8 +199,8 @@ export function ScreenplayWorkspace({
           opens so it doesn't overflow off the right edge of the window. */}
       {railOpen && (
         <aside
-          className="relative shrink-0 flex flex-col bl-island rounded-2xl overflow-hidden"
-          style={{ width: railUserWidth }}
+          className="relative shrink-0 flex flex-col min-w-0 bl-island rounded-2xl overflow-hidden"
+          style={{ width: railWidth }}
         >
           {/* Rail header */}
           <div className="relative flex items-center justify-between gap-2 h-10 px-3 border-b border-border select-none shrink-0">
@@ -217,7 +231,7 @@ export function ScreenplayWorkspace({
           </div>
 
           {/* Chat — existing ChatView, unchanged. */}
-          <div className="flex-1 min-h-0 overflow-hidden">{assistant}</div>
+          <div className="flex-1 min-h-0 min-w-0 overflow-hidden">{assistant}</div>
         </aside>
       )}
       </div>
