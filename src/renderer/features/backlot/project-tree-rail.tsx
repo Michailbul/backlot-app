@@ -118,13 +118,23 @@ function sceneTemplate(label: string): string {
 const MIN_WIDTH = 200
 const MAX_WIDTH = 420
 
+// macOS draws the native traffic lights into the top-left corner
+// ({x:15, y:12} per the BrowserWindow config). Anything interactive
+// placed there is unclickable — the OS controls swallow the click.
+// The collapsed rail button must clear that zone.
+const IS_MAC =
+  typeof navigator !== "undefined" &&
+  navigator.platform.toUpperCase().includes("MAC")
+
 export function ProjectTreeRail() {
   const [open, setOpen] = useAtom(projectTreeOpenAtom)
   const [width, setWidth] = useAtom(projectTreeWidthAtom)
 
   if (!open) {
     // Collapsed — a small square island button pinned to the top-left,
-    // not a full-height empty strip. Click expands the rail.
+    // not a full-height empty strip. Click expands the rail. On macOS
+    // it sits below the traffic lights so the OS controls don't eat
+    // the click.
     return (
       <button
         type="button"
@@ -132,6 +142,7 @@ export function ProjectTreeRail() {
         className={cn(
           "press group shrink-0 self-start flex items-center justify-center",
           "h-10 w-10 bl-island rounded-xl",
+          IS_MAC && "mt-8",
           "text-muted-foreground hover:text-foreground hover:border-primary/40",
           "transition-[color,background-color,border-color] duration-150 [transition-timing-function:var(--ease-natural)]",
         )}
