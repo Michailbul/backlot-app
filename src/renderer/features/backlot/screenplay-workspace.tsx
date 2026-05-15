@@ -39,14 +39,17 @@ import { toast } from "sonner"
 import { ProjectTreeRail } from "./project-tree-rail"
 import { ScreenplayPane } from "./screenplay-pane"
 import { PromptsModeView } from "./prompts-mode-view"
+import { CanvasModeView } from "./canvas-mode-view"
 import { EntityEditor } from "./entity-editor"
 import { Resizer } from "./resizer"
+import { ShotlistSurface } from "./shotlist-surface"
 import { activeEntityAtom, assistantRailWidthAtom, viewModeAtom } from "./atoms"
 import { Sparkles } from "lucide-react"
 import {
   selectedAgentChatIdAtom,
   selectedProjectAtom,
   threadCreateRequestAtom,
+  type ThreadCreateOptions,
 } from "../agents/atoms"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import {
@@ -108,10 +111,11 @@ export function ScreenplayWorkspace({
       {/* Left rail — project tree navigator. Collapsible. */}
       <ProjectTreeRail />
 
-      {/* Center — mode toggle + content. Two distinct surfaces:
+      {/* Center — mode toggle + content. Distinct workflow surfaces:
             · Screenwriting → ScreenplayPane (existing editor flow)
             · Prompts       → PromptsModeView (screenplay ref left,
                               free-text prompt blocks center, chat right)
+            · Shotlist      → ShotlistSurface (Runway prompt queue)
           Toggling is a workflow shift, NOT a layout split — only one
           surface is visible at a time so the user is never confused
           about which mode they're in. */}
@@ -242,16 +246,16 @@ function AmbientCanvas() {
 // ────────────────────────────────────────────────────────────────────────
 // ModeToggleStrip — top-of-pane tabs for the workflow stages.
 //
-//   [ ✎ Screenwriting ]  [ ✦ Prompts ]
+//   [ ✎ Screenwriting ]  [ ✦ Prompts ]  [ Shotlist ]
 //
-// Two distinct surfaces, NOT a layout split. The user shifts pipeline
-// stages here; the chosen mode persists in viewModeAtom across reloads.
+// Distinct surfaces, NOT a layout split. The user shifts pipeline stages
+// here; the chosen mode persists in viewModeAtom across reloads.
 // ────────────────────────────────────────────────────────────────────────
 
 /**
- * The masthead — two words, a moving Coral nib. Reads more like a magazine
+ * The masthead — a few words, a moving Coral nib. Reads more like a magazine
  * masthead than an OS tab strip. Active item: foreground tone + a thin
- * Coral underline that slides between the two using framer-motion's
+ * Coral underline that slides between the items using framer-motion's
  * shared-layoutId trick. Inactive item: muted, no underline. The point
  * is to feel like an editor turning a manuscript page, not toggling a
  * setting.
@@ -275,11 +279,27 @@ function ModeToggleStrip() {
           active={mode === "prompts"}
           onClick={() => setMode("prompts")}
         />
+        <ModeMastheadItem
+          label="Shotlist"
+          active={mode === "shotlist"}
+          onClick={() => setMode("shotlist")}
+        />
+        <ModeMastheadItem
+          label="Canvas"
+          active={mode === "canvas"}
+          onClick={() => setMode("canvas")}
+        />
       </div>
       {/* Right edge: a tracked-mono caption naming the current stage. */}
       <div className="ml-auto flex items-center pr-5">
         <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-muted-foreground/55">
-          {mode === "screenwriting" ? "The page" : "The prompt"}
+          {mode === "screenwriting"
+            ? "The page"
+            : mode === "prompts"
+              ? "The prompt"
+              : mode === "shotlist"
+                ? "The shotlist"
+                : "The board"}
         </span>
       </div>
     </div>
@@ -350,9 +370,23 @@ function ModeAwareCenter({ chatId, directionName }: ModeAwareCenterProps) {
   //                         falls back to EntityEditor since they don't
   //                         have a dedicated prompt surface.
   //
+  //   Shotlist mode       → ShotlistSurface, the imported shotlist and
+  //                         Runway submission tracking surface.
+  //
+  //   Canvas mode         → CanvasModeView, the agent-controllable visual
+  //                         board for prompts, references, and generation.
+  //
   // Atomic markdown entities (brief/world/main-script/character/location/
   // act) always land in the editor regardless of mode — the prompts UI
   // only makes sense for scenes/shots.
+
+  if (mode === "canvas") {
+    return <CanvasModeView worktreeId={chatId} />
+  }
+
+  if (mode === "shotlist") {
+    return <ShotlistSurface />
+  }
 
   // Atomic entities — always the file editor. Includes the generic
   // "file" kind that the Cursor-style tree produces for arbitrary
@@ -445,9 +479,6 @@ function ThreadSwitcher() {
   const removeFromOpenSubChats = useAgentSubChatStore(
     (state) => state.removeFromOpenSubChats,
   )
-  const activeSubChat = allSubChats.find((s) => s.id === activeSubChatId)
-  const activeProviderLabel =
-    activeSubChat?.provider === "codex" ? "Codex" : "Claude"
 
   const utils = trpc.useUtils()
   const deleteSubChat = trpc.chats.deleteSubChat.useMutation({
@@ -514,7 +545,7 @@ function ThreadSwitcher() {
     deleteSubChat.mutate({ id: thread.id })
   }
 
-  const createThread = (options: { kind: "fresh" } | { kind: "branch" }) => {
+  const createThread = (options: ThreadCreateOptions) => {
     if (!activeChatId) return
     setThreadCreateRequest({
       id: Date.now(),
@@ -625,22 +656,46 @@ function ThreadSwitcher() {
         )}
         <DropdownMenuItem
           disabled={!activeSubChatId}
-          onClick={() => createThread({ kind: "branch" })}
+          onClick={() =>
+            createThread({ kind: "branch", provider: "claude-code" })
+          }
         >
           <GitBranch className="h-4 w-4 mr-2 text-muted-foreground" />
           <div className="flex flex-col">
-            <span>Branch from current</span>
+            <span>Branch into Claude</span>
             <span className="text-[11px] text-muted-foreground">
-              Keep history, stay on {activeProviderLabel}
+              Keep current thread history
             </span>
           </div>
         </DropdownMenuItem>
         <DropdownMenuItem
+          disabled={!activeSubChatId}
+          onClick={() => createThread({ kind: "branch", provider: "codex" })}
+        >
+          <GitBranch className="h-4 w-4 mr-2 text-muted-foreground" />
+          <div className="flex flex-col">
+            <span>Branch into Codex</span>
+            <span className="text-[11px] text-muted-foreground">
+              Keep current thread history
+            </span>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
           disabled={!activeChatId}
-          onClick={() => createThread({ kind: "fresh" })}
+          onClick={() =>
+            createThread({ kind: "fresh", provider: "claude-code" })
+          }
         >
           <MessageSquarePlus className="h-4 w-4 mr-2 text-muted-foreground" />
-          Fresh {activeProviderLabel} thread
+          Start new chat with Claude
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!activeChatId}
+          onClick={() => createThread({ kind: "fresh", provider: "codex" })}
+        >
+          <MessageSquarePlus className="h-4 w-4 mr-2 text-muted-foreground" />
+          Start new chat with Codex
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -678,9 +733,17 @@ function formatThreadRelative(input: string | Date | null | undefined): string {
 function ForkActiveButton() {
   const activeChatId = useAtomValue(selectedAgentChatIdAtom)
   const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom)
+  const utils = trpc.useUtils()
 
   const fork = trpc.chats.forkDirection.useMutation({
     onSuccess: (newChat) => {
+      if (newChat.projectId) {
+        utils.chats.list.invalidate({ projectId: newChat.projectId })
+        utils.chats.directionsForProject.invalidate({
+          projectId: newChat.projectId,
+        })
+      }
+      utils.chats.get.invalidate({ id: newChat.id })
       setSelectedChatId(newChat.id)
       toast.success(`Forked into "${newChat.name ?? "Untitled"}"`)
     },
@@ -745,10 +808,10 @@ function LineageBreadcrumb() {
     const byId = new Map(list.map((d) => [d.id, d]))
     const out: typeof list = []
     let cursor = byId.get(activeChatId)
-    let safety = 32 // guard against unexpected cycles in the parentChatId chain
+    let safety = 32 // guard against unexpected cycles in the parentWorktreeId chain
     while (cursor && safety-- > 0) {
       out.unshift(cursor)
-      cursor = cursor.parentChatId ? byId.get(cursor.parentChatId) : undefined
+      cursor = cursor.parentWorktreeId ? byId.get(cursor.parentWorktreeId) : undefined
     }
     return out
   })()

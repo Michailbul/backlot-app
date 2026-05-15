@@ -355,8 +355,8 @@ const agents = [
 
 type AgentProviderId = "claude-code" | "codex"
 type CreateThreadOptions =
-  | { kind: "fresh" }
-  | { kind: "branch" }
+  | { kind: "fresh"; provider?: AgentProviderId }
+  | { kind: "branch"; provider?: AgentProviderId }
 
 function inferProviderFromMessages(
   messages: any[] | undefined,
@@ -2103,6 +2103,11 @@ const ChatViewInner = memo(function ChatViewInner({
   const subChatName = useAgentSubChatStore(
     (state) => state.allSubChats.find((sc) => sc.id === subChatId)?.name || "",
   )
+  const subChatProvider = useAgentSubChatStore((state) =>
+    state.allSubChats.find((sc) => sc.id === subChatId)?.provider === "codex"
+      ? "codex"
+      : "claude-code",
+  )
 
   // Mutation for renaming sub-chat
   const renameSubChatMutation = api.agents.renameSubChat.useMutation({
@@ -2913,6 +2918,7 @@ const ChatViewInner = memo(function ChatViewInner({
       pendingAuthRetry &&
       pendingAuthRetry.readyToRetry &&
       pendingAuthRetry.subChatId === subChatId &&
+      pendingAuthRetry.provider === subChatProvider &&
       !isStreaming
     ) {
       // Clear the pending message immediately to prevent double-sending
@@ -2945,6 +2951,7 @@ const ChatViewInner = memo(function ChatViewInner({
     }
   }, [
     pendingAuthRetry,
+    subChatProvider,
     isStreaming,
     sendMessage,
     setPendingAuthRetry,
@@ -4255,6 +4262,7 @@ const ChatViewInner = memo(function ChatViewInner({
         messageTokenData={messageTokenData}
         subChatId={subChatId}
         parentChatId={parentChatId}
+        activeProvider={subChatProvider}
         teamId={teamId}
         repository={repository}
         sandboxId={sandboxId}
@@ -5634,11 +5642,14 @@ Make sure to preserve all functionality from both branches when resolving confli
     const currentOpenIds = freshState.openSubChatIds
     currentOpenIds.forEach((id) => {
       if (!dbSubChatIds.has(id)) {
+        const existingLocal = existingSubChatsMap.get(id)
         allSubChats.push({
           id,
-          name: "New Chat",
-          created_at: new Date().toISOString(),
-          provider: sessionProvider,
+          name: existingLocal?.name || "New Chat",
+          created_at: existingLocal?.created_at ?? new Date().toISOString(),
+          updated_at: existingLocal?.updated_at,
+          mode: existingLocal?.mode || "agent",
+          provider: existingLocal?.provider || sessionProvider,
         })
       }
     })
@@ -5736,7 +5747,7 @@ Make sure to preserve all functionality from both branches when resolving confli
       const isRemoteChat = !!(agentChat as any)?.isRemote || !!chatSandboxId
       const chatProvider = inferProviderFromMessages(
         messages,
-        (subChat as any)?.provider,
+        (subChat as any)?.provider || subChatMeta?.provider,
       )
 
       console.log("[getOrCreateChat] Transport selection", {
@@ -5896,11 +5907,16 @@ Make sure to preserve all functionality from both branches when resolving confli
         ? currentSubChat
         : null
     const sourceMessages = (sourceSubChat?.messages as any[] | undefined) || []
-    const newProvider: AgentProviderId = sessionProvider
+    const newProvider: AgentProviderId =
+      resolvedOptions.provider ??
+      ((sourceSubChat as any)?.provider === "codex"
+        ? "codex"
+        : sessionProvider)
+    const providerLabel = newProvider === "codex" ? "Codex" : "Claude"
     const newSubChatName =
       resolvedOptions.kind === "branch"
-        ? `Branch from ${sourceSubChat?.name?.trim() || "current thread"}`
-        : "New Thread"
+        ? `${providerLabel} branch from ${sourceSubChat?.name?.trim() || "current thread"}`
+        : `New ${providerLabel} thread`
 
     // Check if this is a remote sandbox chat
     const isRemoteChat = !!(agentChat as any)?.isRemote
@@ -5921,6 +5937,7 @@ Make sure to preserve all functionality from both branches when resolving confli
         sourceSubChatId:
           resolvedOptions.kind === "branch" ? sourceSubChat?.id : undefined,
         inheritMessages: resolvedOptions.kind === "branch",
+        provider: newProvider,
       })
       newId = newSubChat.id
       try {
