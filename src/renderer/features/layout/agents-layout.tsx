@@ -4,10 +4,8 @@ import {
   useState,
   useMemo,
   useRef,
-  type ReactNode,
 } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { FolderTree, PanelLeft, PanelRight } from "lucide-react"
 import { isDesktopApp } from "../../lib/utils/platform"
 import { cn } from "../../lib/utils"
 import { assistantRailOpenAtom, projectTreeOpenAtom } from "../backlot/atoms"
@@ -22,6 +20,8 @@ import {
   anthropicOnboardingCompletedAtom,
   customHotkeysAtom,
   betaKanbanEnabledAtom,
+  betaAutomationsEnabledAtom,
+  chatSourceModeAtom,
 } from "../../lib/atoms"
 import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom, desktopViewAtom, fileSearchDialogOpenAtom } from "../agents/atoms"
 import { trpc } from "../../lib/trpc"
@@ -40,6 +40,10 @@ import { useUpdateChecker } from "../../lib/hooks/use-update-checker"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import { QueueProcessor } from "../agents/components/queue-processor"
 import { SettingsSidebar } from "../settings/settings-sidebar"
+import { ChatView } from "../agents/main/active-chat"
+import { NoChatAssistantPanel } from "../agents/ui/no-chat-assistant-panel"
+import { AssistantRail } from "../backlot/assistant-rail"
+import { AppTopBar } from "../backlot/screenplay-workspace"
 
 // ============================================================================
 // Constants
@@ -49,6 +53,11 @@ const SIDEBAR_MIN_WIDTH = 160
 const SIDEBAR_MAX_WIDTH = 300
 const SIDEBAR_ANIMATION_DURATION = 0
 const SIDEBAR_CLOSE_HOTKEY = "⌘\\"
+
+// Soft all-around shadow that lifts the Projects panel off the canvas as a
+// floating island.
+const FLOATING_PANEL_SHADOW =
+  "0 0 0 0.5px hsl(var(--border) / 0.55), 0 2px 5px rgba(20, 20, 20, 0.05), 0 12px 30px -10px rgba(20, 20, 20, 0.17)"
 
 // ============================================================================
 // Component
@@ -106,6 +115,10 @@ export function AgentsLayout() {
   const setSelectedDraftId = useSetAtom(selectedDraftIdAtom)
   const setShowNewChatForm = useSetAtom(showNewChatFormAtom)
   const betaKanbanEnabled = useAtomValue(betaKanbanEnabledAtom)
+  const betaAutomationsEnabled = useAtomValue(betaAutomationsEnabledAtom)
+  const selectedDraftId = useAtomValue(selectedDraftIdAtom)
+  const showNewChatForm = useAtomValue(showNewChatFormAtom)
+  const chatSourceMode = useAtomValue(chatSourceModeAtom)
   const setDesktopView = useSetAtom(desktopViewAtom)
   const setAnthropicOnboardingCompleted = useSetAtom(
     anthropicOnboardingCompletedAtom
@@ -257,6 +270,40 @@ export function AgentsLayout() {
       }
     : null
 
+  // Assistant rail — hoisted here so it spans the full window height as a
+  // top-level column, beside the macOS chrome strip rather than tucked
+  // under it. It shows for exactly the views that render
+  // ScreenplayWorkspace; this mirrors the branch order in AgentsContent's
+  // desktop layout (settings / automations take over the whole surface;
+  // a draft, the new-chat form, or Kanban replace the project view).
+  const isAutomationsView =
+    betaAutomationsEnabled &&
+    (desktopView === "automations" ||
+      desktopView === "automations-detail" ||
+      desktopView === "inbox")
+  const isWorkspaceSurface =
+    !isMobile &&
+    !isSettingsView &&
+    !isAutomationsView &&
+    (selectedChatId != null ||
+      (validatedProject != null &&
+        !selectedDraftId &&
+        !showNewChatForm &&
+        !betaKanbanEnabled))
+
+  // The chat itself — the existing <ChatView />, preserved verbatim with a
+  // stable key so the stream and chat state survive across re-renders.
+  const assistantNode = selectedChatId ? (
+    <ChatView
+      key={`${chatSourceMode}-${selectedChatId}`}
+      chatId={selectedChatId}
+      isSidebarOpen={sidebarOpen}
+      onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+    />
+  ) : (
+    <NoChatAssistantPanel />
+  )
+
   return (
     <TooltipProvider delayDuration={300}>
       {/* Global queue processor - handles message queues for all sub-chats */}
@@ -269,166 +316,62 @@ export function AgentsLayout() {
       <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
         {/* Windows Title Bar (only shown on Windows with frameless window) */}
         <WindowsTitleBar />
-        {/* macOS chrome strip — reserves the top band for the native
-            traffic lights and the panel collapse/expand toggles. */}
-        <AppTopBar />
         <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar - switches between chat list and settings nav */}
+          {/* Projects sidebar — a full-window-height column. Its own macOS
+              band sits on top so the panel reaches the window's top edge. */}
           <ResizableSidebar
-          isOpen={!isMobile && sidebarOpen}
-          onClose={handleCloseSidebar}
-          widthAtom={agentsSidebarWidthAtom}
-          minWidth={SIDEBAR_MIN_WIDTH}
-          maxWidth={SIDEBAR_MAX_WIDTH}
-          side="left"
-          closeHotkey={SIDEBAR_CLOSE_HOTKEY}
-          animationDuration={SIDEBAR_ANIMATION_DURATION}
-          initialWidth={0}
-          exitWidth={0}
-          showResizeTooltip={!isSettingsView}
-          className="overflow-hidden bg-background border-r"
-          style={{ borderRightWidth: "0.5px" }}
-        >
-          {isSettingsView ? (
-            <SettingsSidebar />
-          ) : (
-            <AgentsSidebar
-              desktopUser={sidebarDesktopUser}
-              onSignOut={handleSignOut}
-              onToggleSidebar={handleCloseSidebar}
-            />
-          )}
-        </ResizableSidebar>
+            isOpen={!isMobile && sidebarOpen}
+            onClose={handleCloseSidebar}
+            widthAtom={agentsSidebarWidthAtom}
+            minWidth={SIDEBAR_MIN_WIDTH}
+            maxWidth={SIDEBAR_MAX_WIDTH}
+            side="left"
+            closeHotkey={SIDEBAR_CLOSE_HOTKEY}
+            animationDuration={SIDEBAR_ANIMATION_DURATION}
+            initialWidth={0}
+            exitWidth={0}
+            disableResize
+            className="bg-background p-2"
+            style={{ overflow: "visible" }}
+          >
+            {/* Floating island — full height, rounded, inset from the
+                window edges so the panel reads as a lifted card. The
+                sidebar's own header carries the macOS chrome: its wordmark
+                row clears the traffic lights, no empty band on top. */}
+            <div
+              className="h-full overflow-hidden rounded-xl bg-tl-background"
+              style={{ boxShadow: FLOATING_PANEL_SHADOW }}
+            >
+              {isSettingsView ? (
+                <SettingsSidebar />
+              ) : (
+                <AgentsSidebar
+                  desktopUser={sidebarDesktopUser}
+                  onSignOut={handleSignOut}
+                  onToggleSidebar={handleCloseSidebar}
+                />
+              )}
+            </div>
+          </ResizableSidebar>
 
-          {/* Main Content */}
+          {/* Editor area. On the workspace surface, ScreenplayWorkspace
+              renders its own macOS strip per column; other views get the
+              fallback AppTopBar here. */}
           <div className="flex-1 overflow-hidden flex flex-col min-w-0">
-            <AgentsContent />
+            {!isMobile && !isWorkspaceSurface && <AppTopBar />}
+            <div className="flex-1 overflow-hidden flex flex-col min-w-0">
+              <AgentsContent />
+            </div>
           </div>
+
+          {/* Right — assistant rail. A full-window-height column so its
+              header strip sits on the macOS-chrome line. */}
+          {isWorkspaceSurface && <AssistantRail>{assistantNode}</AssistantRail>}
         </div>
 
         {/* Update Banner */}
         <UpdateBanner />
       </div>
     </TooltipProvider>
-  )
-}
-
-// ============================================================================
-// AppTopBar — the macOS chrome strip. A reserved full-width band at the very
-// top of the window: it holds the native traffic lights on the left and the
-// panel collapse/expand toggles. The band is itself a window-drag region, so
-// no app content sits in it and nothing collides with the OS controls.
-// ============================================================================
-
-function AppTopBar() {
-  const isDesktop = useAtomValue(isDesktopAtom)
-  const isFullscreen = useAtomValue(isFullscreenAtom)
-  const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom)
-  const [treeOpen, setTreeOpen] = useAtom(projectTreeOpenAtom)
-  const [assistantOpen, setAssistantOpen] = useAtom(assistantRailOpenAtom)
-  const project = useAtomValue(selectedProjectAtom)
-
-  const isMac =
-    typeof navigator !== "undefined" &&
-    navigator.platform.toUpperCase().includes("MAC")
-
-  // Windows has its own WindowsTitleBar; the web build has no chrome.
-  if (!isDesktop || !isMac) return null
-
-  return (
-    <div
-      className="relative z-30 shrink-0 flex items-stretch h-10 bg-background"
-      style={{
-        // @ts-expect-error - WebKit-specific property
-        WebkitAppRegion: "drag",
-      }}
-    >
-      {/* Left — native traffic lights (reserved, un-dragged so the OS
-          buttons stay clickable) + the panel collapse toggles. */}
-      <div
-        className="flex items-center"
-        style={{
-          // @ts-expect-error - WebKit-specific property
-          WebkitAppRegion: "no-drag",
-        }}
-      >
-        {!isFullscreen && <div aria-hidden className="w-[72px] shrink-0" />}
-        <div className="flex items-center gap-0.5">
-          <TopBarToggle
-            onClick={() => setSidebarOpen((v) => !v)}
-            title={sidebarOpen ? "Hide projects sidebar" : "Show projects sidebar"}
-          >
-            <PanelLeft className="h-4 w-4" />
-          </TopBarToggle>
-          <TopBarToggle
-            onClick={() => setTreeOpen((v) => !v)}
-            title={treeOpen ? "Hide file explorer" : "Show file explorer"}
-          >
-            <FolderTree className="h-4 w-4" />
-          </TopBarToggle>
-        </div>
-      </div>
-
-      {/* Centre — the project title, native-window-title style. */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="flex items-center gap-1.5 text-[12px]">
-          <span className="text-muted-foreground/70">Backlot</span>
-          {project?.name && (
-            <>
-              <span className="text-muted-foreground/40">/</span>
-              <span className="font-medium text-foreground/90">{project.name}</span>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Right — assistant panel name + toggle. Mirrors the reference:
-          the panel's name sits on the macOS-controls line. */}
-      <div
-        className="ml-auto flex items-center gap-2 pr-2"
-        style={{
-          // @ts-expect-error - WebKit-specific property
-          WebkitAppRegion: "no-drag",
-        }}
-      >
-        {assistantOpen && (
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-            Assistant
-          </span>
-        )}
-        <TopBarToggle
-          onClick={() => setAssistantOpen((v) => !v)}
-          title={assistantOpen ? "Hide assistant" : "Show assistant"}
-        >
-          <PanelRight className="h-4 w-4" />
-        </TopBarToggle>
-      </div>
-    </div>
-  )
-}
-
-function TopBarToggle({
-  onClick,
-  title,
-  children,
-}: {
-  onClick: () => void
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className={cn(
-        "press flex items-center justify-center h-7 w-7 rounded-md",
-        "text-muted-foreground hover:text-foreground hover:bg-foreground/10",
-        "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
-      )}
-    >
-      {children}
-    </button>
   )
 }

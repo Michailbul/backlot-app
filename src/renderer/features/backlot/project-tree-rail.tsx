@@ -33,6 +33,7 @@ import {
 } from "../agents/atoms"
 import { trpc } from "../../lib/trpc"
 import { cn } from "../../lib/utils"
+import { agentsSidebarOpenAtom } from "../../lib/atoms"
 import {
   activeEntityAtom,
   projectTreeOpenAtom,
@@ -118,6 +119,7 @@ const MAX_WIDTH = 420
 
 export function ProjectTreeRail() {
   const open = useAtomValue(projectTreeOpenAtom)
+  const sidebarOpen = useAtomValue(agentsSidebarOpenAtom)
   const [width, setWidth] = useAtom(projectTreeWidthAtom)
 
   // Collapsed — render nothing. The file-explorer toggle lives in the
@@ -130,7 +132,16 @@ export function ProjectTreeRail() {
         className="relative flex flex-col bl-island rounded-2xl overflow-hidden"
         style={{ width }}
       >
-        <div className="flex-1 min-h-0 overflow-auto">
+        {/* The tree starts flush at the top. Only when the projects
+            sidebar is collapsed does this rail become the window's
+            left-most panel — then pad the top so the tree clears the
+            native traffic lights. */}
+        <div
+          className={cn(
+            "flex-1 min-h-0 overflow-auto",
+            !sidebarOpen && "pt-9",
+          )}
+        >
           <ProjectTreeContent />
         </div>
       </aside>

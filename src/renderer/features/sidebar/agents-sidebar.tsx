@@ -1358,8 +1358,15 @@ const SidebarHeader = memo(function SidebarHeader({
       )}
 
 
-      {/* Team dropdown - below traffic lights */}
-      <div className="px-2 pt-2 pb-2">
+      {/* Team dropdown — sits on the macOS chrome line. When the sidebar
+          reaches the window's top edge, the wordmark is inset past the
+          native traffic lights so they sit side by side — no empty band. */}
+      <div
+        className={cn(
+          "pt-2 pb-2 pr-2",
+          isDesktop && !isFullscreen ? "pl-[78px]" : "pl-2",
+        )}
+      >
         <div className="flex items-center gap-1">
           <div className="flex-1 min-w-0">
             <DropdownMenu

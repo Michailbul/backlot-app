@@ -21,17 +21,20 @@
  * (placeholder for now; CodeMirror in Phase D2).
  */
 
-import { type ReactNode, useEffect, useRef } from "react"
+import { type ReactNode } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import {
   Check,
   ChevronLeft,
   ChevronRight,
   Clapperboard,
+  FolderTree,
   GitBranch,
   LayoutGrid,
   MessageSquare,
   MessageSquarePlus,
+  PanelLeft,
+  PanelRight,
   PenLine,
   Plus,
   Trash2,
@@ -42,14 +45,18 @@ import { ScreenplayPane } from "./screenplay-pane"
 import { PromptsModeView } from "./prompts-mode-view"
 import { CanvasModeView } from "./canvas-mode-view"
 import { EntityEditor } from "./entity-editor"
-import { Resizer } from "./resizer"
 import { ShotlistSurface } from "./shotlist-surface"
 import {
   activeEntityAtom,
   assistantRailOpenAtom,
-  assistantRailWidthAtom,
+  projectTreeOpenAtom,
   viewModeAtom,
 } from "./atoms"
+import {
+  agentsSidebarOpenAtom,
+  isDesktopAtom,
+  isFullscreenAtom,
+} from "../../lib/atoms"
 import { Sparkles } from "lucide-react"
 import {
   selectedAgentChatIdAtom,
@@ -69,73 +76,34 @@ import { GlassFilter } from "../../components/ui/liquid-glass-filter"
 import { trpc } from "../../lib/trpc"
 import { cn } from "../../lib/utils"
 
-// The assistant rail is drag-resizable via the handle on its left edge.
-// It can be made narrower, but never wider than its default: the chat
-// lays out comfortably at the default width, and a wider rail only
-// steals canvas from the screenplay — on a small window it can even
-// push its own right edge off-screen. So default IS the max.
-const RAIL_DEFAULT_WIDTH = 420 // keep in sync with assistantRailWidthAtom
-const RAIL_MIN_WIDTH = 340
-const RAIL_MAX_WIDTH = RAIL_DEFAULT_WIDTH
-
 interface ScreenplayWorkspaceProps {
   chatId: string | null
   directionName?: string | null
-  /** The existing <ChatView /> goes here. */
-  assistant: ReactNode
 }
 
 export function ScreenplayWorkspace({
   chatId,
   directionName,
-  assistant,
 }: ScreenplayWorkspaceProps) {
-  const [railOpen, setRailOpen] = useAtom(assistantRailOpenAtom)
-  const [railUserWidth, setRailUserWidth] = useAtom(assistantRailWidthAtom)
-
-  // Clamp the rendered width to the current bounds, and heal any value
-  // persisted under the old 760px ceiling — without this, a rail dragged
-  // wide in a past session keeps rendering off the window edge.
-  const railWidth = Math.min(
-    RAIL_MAX_WIDTH,
-    Math.max(RAIL_MIN_WIDTH, railUserWidth),
-  )
-  useEffect(() => {
-    if (railUserWidth !== railWidth) setRailUserWidth(railWidth)
-  }, [railUserWidth, railWidth, setRailUserWidth])
-
-  // Cmd+\ (or Ctrl+\) toggles the assistant rail. Single keystroke, mirrors
-  // VS Code / Cursor's secondary-sidebar shortcut. Saves the user from
-  // having to hunt for the tiny edge chevron when the rail is collapsed.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const isMac = navigator.platform.toUpperCase().includes("MAC")
-      const mod = isMac ? e.metaKey : e.ctrlKey
-      if (mod && e.key === "\\") {
-        e.preventDefault()
-        setRailOpen((v) => !v)
-      }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [setRailOpen])
-
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-background">
       {/* Master canvas — the editor's own paper tone fills the window.
           A faint lime halo keeps it from reading dead-flat. */}
       <AmbientCanvas />
 
-      {/* Floating-island shell. The rail and assistant are cards lifted
-          off the canvas; the navbar floats above the editor only, so the
-          assistant rail keeps its full height beside it. */}
+      {/* Floating-island shell — project tree on the left, the editor on
+          the bare canvas with the workflow mode dock at its bottom edge.
+          The assistant rail is hoisted to AgentsLayout so it can span the
+          full window height; it is no longer a child here. */}
       <div className="relative z-10 flex h-full w-full gap-2.5 p-2.5">
         {/* Left rail — project tree navigator. */}
         <ProjectTreeRail />
 
-        {/* Center column — the editor on the bare canvas, with the
-            workflow mode dock floating at its bottom edge. */}
+        {/* Center column — the editor on the bare canvas. Its own macOS
+            chrome strip sits on top; the workflow mode dock floats at its
+            bottom edge. */}
         <div className="relative flex-1 min-w-0 flex flex-col">
+          <AppTopBar workspace />
           <div className="relative flex-1 min-h-0 flex flex-col">
             <LineageBreadcrumb />
             <div className="flex-1 min-h-0">
@@ -144,37 +112,6 @@ export function ScreenplayWorkspace({
           </div>
           <ModeDock />
         </div>
-
-      {/* Right-rail resize handle — drag to set the assistant width. The
-          handle sits on the rail's LEFT edge, so dragging left (negative
-          delta) widens the rail; subtract the delta to grow it. */}
-      {railOpen && (
-        <Resizer
-          axis="x"
-          bare
-          className="z-10"
-          onResize={(d) =>
-            setRailUserWidth((w) =>
-              Math.max(RAIL_MIN_WIDTH, Math.min(RAIL_MAX_WIDTH, w - d)),
-            )
-          }
-        />
-      )}
-
-      {/* Right rail — assistant. Drag the handle on its left edge to
-          resize; width also grows when the chat's inline Details panel
-          opens so it doesn't overflow off the right edge of the window. */}
-      {railOpen && (
-        <aside
-          className="relative shrink-0 flex flex-col min-w-0 bl-island rounded-2xl overflow-hidden"
-          style={{ width: railWidth }}
-        >
-          {/* Chat — the existing ChatView. The thread tab strip lives
-              in the AppTopBar now, so the rail itself is purely the
-              conversation: chat fills it top to bottom. */}
-          <div className="flex-1 min-h-0 min-w-0 overflow-hidden">{assistant}</div>
-        </aside>
-      )}
       </div>
     </div>
   )
@@ -796,5 +733,127 @@ function LineageBreadcrumb() {
         })}
       </div>
     </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// AppTopBar — the macOS chrome strip for the editor column. Holds the
+// panel toggles on the left, the project title centred, and the assistant
+// toggle on the right. The strip is transparent (the canvas shows through)
+// and is a window-drag region. It reserves space for the native traffic
+// lights only when the editor column is itself the left-most panel — both
+// side rails collapsed — since otherwise the lights sit over a side rail.
+//
+// `workspace` = full project chrome (file-tree + assistant toggles).
+// Without it the bar is the lighter fallback used by Settings / new-chat.
+// ────────────────────────────────────────────────────────────────────────
+
+export function AppTopBar({ workspace = false }: { workspace?: boolean }) {
+  const isDesktop = useAtomValue(isDesktopAtom)
+  const isFullscreen = useAtomValue(isFullscreenAtom)
+  const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom)
+  const [treeOpen, setTreeOpen] = useAtom(projectTreeOpenAtom)
+  const [assistantOpen, setAssistantOpen] = useAtom(assistantRailOpenAtom)
+  const project = useAtomValue(selectedProjectAtom)
+
+  const isMac =
+    typeof navigator !== "undefined" &&
+    navigator.platform.toUpperCase().includes("MAC")
+
+  // Windows has its own WindowsTitleBar; the web build has no chrome.
+  if (!isDesktop || !isMac) return null
+
+  // The traffic lights sit at the window's top-left. They land on the
+  // editor column only when every panel to its left is collapsed: the
+  // projects sidebar always, and the file rail too on a workspace
+  // surface. Reserve the 72px just for that case.
+  const filesRailToLeft = workspace && treeOpen
+  const reserve = !isFullscreen && !sidebarOpen && !filesRailToLeft
+
+  return (
+    <div
+      className="relative z-30 shrink-0 flex items-stretch h-10"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    >
+      {/* Left — panel collapse toggles (un-dragged so they stay clickable),
+          after an optional traffic-light reserve. */}
+      <div
+        className="flex items-center"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        {reserve && <div aria-hidden className="w-[72px] shrink-0" />}
+        <div className="flex items-center gap-0.5 pl-1.5">
+          <TopBarToggle
+            onClick={() => setSidebarOpen((v) => !v)}
+            title={sidebarOpen ? "Hide projects sidebar" : "Show projects sidebar"}
+          >
+            <PanelLeft className="h-4 w-4" />
+          </TopBarToggle>
+          {workspace && (
+            <TopBarToggle
+              onClick={() => setTreeOpen((v) => !v)}
+              title={treeOpen ? "Hide file explorer" : "Show file explorer"}
+            >
+              <FolderTree className="h-4 w-4" />
+            </TopBarToggle>
+          )}
+        </div>
+      </div>
+
+      {/* Centre — the project title, native-window-title style. */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="flex items-center gap-1.5 text-[12px]">
+          <span className="text-muted-foreground/70">Backlot</span>
+          {project?.name && (
+            <>
+              <span className="text-muted-foreground/40">/</span>
+              <span className="font-medium text-foreground/90">{project.name}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Right — assistant rail toggle. The rail owns its own header
+          (name + close); this stays so a closed rail can be reopened. */}
+      {workspace && (
+        <div
+          className="ml-auto flex items-center pr-1.5"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <TopBarToggle
+            onClick={() => setAssistantOpen((v) => !v)}
+            title={assistantOpen ? "Hide assistant" : "Show assistant"}
+          >
+            <PanelRight className="h-4 w-4" />
+          </TopBarToggle>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TopBarToggle({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={cn(
+        "press flex items-center justify-center h-7 w-7 rounded-md",
+        "text-muted-foreground hover:text-foreground hover:bg-foreground/10",
+        "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
+      )}
+    >
+      {children}
+    </button>
   )
 }
