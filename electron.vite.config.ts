@@ -1,8 +1,7 @@
 import { defineConfig, externalizeDepsPlugin } from "electron-vite"
 import { resolve } from "path"
 import react from "@vitejs/plugin-react"
-import tailwindcss from "tailwindcss"
-import autoprefixer from "autoprefixer"
+import tailwindcss from "@tailwindcss/vite"
 
 const isDev = process.env.NODE_ENV !== "production"
 
@@ -57,6 +56,10 @@ export default defineConfig({
           ? "@welldone-software/why-did-you-render"
           : undefined,
       }),
+      // Tailwind CSS v4 — first-party Vite plugin (replaces the v3
+      // PostCSS pipeline). Theme config still loads from tailwind.config.js
+      // via the `@config` directive in globals.css.
+      tailwindcss(),
     ],
     resolve: {
       alias: {
@@ -69,11 +72,6 @@ export default defineConfig({
           index: resolve(__dirname, "src/renderer/index.html"),
           login: resolve(__dirname, "src/renderer/login.html"),
         },
-      },
-    },
-    css: {
-      postcss: {
-        plugins: [tailwindcss, autoprefixer],
       },
     },
   },

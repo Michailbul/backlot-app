@@ -15,7 +15,7 @@ import {
 } from "../../details-sidebar/atoms"
 import { chatSourceModeAtom } from "../../../lib/atoms"
 import { trpc } from "../../../lib/trpc"
-import { X, Plus, AlignJustify, Play, TerminalSquare, GitBranch, MessageSquarePlus } from "lucide-react"
+import { X, Plus, AlignJustify, Play, GitBranch, MessageSquarePlus } from "lucide-react"
 import {
   IconSpinner,
   PlanIcon,
@@ -998,35 +998,6 @@ export function SubChatSelector({
             <TooltipContent side="bottom">
               <span>View changes</span>
               {openDiffHotkey && <Kbd>{openDiffHotkey}</Kbd>}
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      )}
-
-      {/* Terminal button - visible on desktop when unified sidebar is disabled OR terminal widget is hidden, and terminal is not already open */}
-      {!isMobile && canOpenTerminal && showTerminalButton && !isTerminalOpen && (
-        <div
-          className="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center"
-          style={{
-            // @ts-expect-error - WebKit-specific property
-            WebkitAppRegion: "no-drag",
-          }}
-        >
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onOpenTerminal?.()}
-                className="h-6 w-6 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center hover:bg-foreground/10"
-              >
-                <TerminalSquare className="h-4 w-4" />
-                <span className="sr-only">Open terminal</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <span>Open terminal</span>
-              {toggleTerminalHotkey && <Kbd>{toggleTerminalHotkey}</Kbd>}
             </TooltipContent>
           </Tooltip>
         </div>

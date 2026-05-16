@@ -18,10 +18,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  Clapperboard,
-  GitBranch,
   Globe2,
   Layers,
   MapPin,
@@ -37,6 +33,7 @@ import {
 } from "../agents/atoms"
 import { trpc } from "../../lib/trpc"
 import { cn } from "../../lib/utils"
+import { agentsSidebarOpenAtom } from "../../lib/atoms"
 import {
   activeEntityAtom,
   projectTreeOpenAtom,
@@ -121,66 +118,37 @@ const MIN_WIDTH = 200
 const MAX_WIDTH = 420
 
 export function ProjectTreeRail() {
-  const [open, setOpen] = useAtom(projectTreeOpenAtom)
+  const open = useAtomValue(projectTreeOpenAtom)
+  const sidebarOpen = useAtomValue(agentsSidebarOpenAtom)
   const [width, setWidth] = useAtom(projectTreeWidthAtom)
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          "press shrink-0 flex flex-col items-center justify-start py-3 gap-2",
-          "w-7 border-r border-border bg-card/30",
-          "text-muted-foreground hover:text-foreground hover:bg-card/60",
-          "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
-        )}
-        title="Show project"
-        aria-label="Show project"
-      >
-        <Clapperboard className="h-4 w-4" />
-        <span
-          className="text-[10px] uppercase tracking-[0.18em] font-mono"
-          style={{ writingMode: "vertical-rl" }}
-        >
-          Project
-        </span>
-        <ChevronsRight className="h-3 w-3" />
-      </button>
-    )
-  }
+  // Collapsed — render nothing. The file-explorer toggle lives in the
+  // top navbar (IDE-style); the rail carries no collapse chrome itself.
+  if (!open) return null
 
   return (
-    <div className="flex shrink-0 h-full">
+    <div className="relative flex shrink-0 h-full">
       <aside
-        className="border-r border-border bg-card/30 flex flex-col"
+        className="relative flex flex-col bl-island rounded-2xl overflow-hidden"
         style={{ width }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between h-9 px-3 border-b border-border bg-card/40 select-none shrink-0">
-          <div className="flex items-center gap-2">
-            <Clapperboard className="h-3 w-3 text-muted-foreground" />
-            <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 font-mono">
-              Project
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="press text-muted-foreground hover:text-foreground transition-[color] duration-150 [transition-timing-function:var(--ease-natural)]"
-            title="Hide project"
-          >
-            <ChevronsLeft className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-auto">
+        {/* The tree starts flush at the top. Only when the projects
+            sidebar is collapsed does this rail become the window's
+            left-most panel — then pad the top so the tree clears the
+            native traffic lights. */}
+        <div
+          className={cn(
+            "flex-1 min-h-0 overflow-auto",
+            !sidebarOpen && "pt-9",
+          )}
+        >
           <ProjectTreeContent />
         </div>
       </aside>
 
       <Resizer
         axis="x"
+        bare
         onResize={(d) => setWidth((w) => Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, w + d)))}
       />
     </div>
@@ -192,28 +160,13 @@ export function ProjectTreeRail() {
 // ────────────────────────────────────────────────────────────────────────
 
 function ProjectTreeContent() {
-  const [activeChatId, setActiveChatId] = useAtom(selectedAgentChatIdAtom)
-  const selectedProject = useAtomValue(selectedProjectAtom)
-  const directions = trpc.chats.directionsForProject.useQuery(
-    { projectId: selectedProject?.id ?? "" },
-    { enabled: !!selectedProject?.id, refetchInterval: 5000 },
-  )
-
   // ProjectFileTree handles its own root resolution: it reads the
   // selected chat's worktree when a chat is active, otherwise it falls
-  // back to the canonical project root from `selectedProjectAtom`. The
-  // tree shows files in both modes — there's no "open a chat first"
-  // gate. When no project is selected at all, ProjectFileTree renders
-  // its own "No project" empty state.
+  // back to the canonical project root. The tree shows files in both
+  // modes — there's no "open a chat first" gate. When no project is
+  // selected at all, ProjectFileTree renders its own empty state.
   return (
     <div className="py-2">
-      <DirectionsSection
-        directions={directions.data ?? []}
-        activeChatId={activeChatId}
-        onSelect={setActiveChatId}
-        isLoading={directions.isLoading}
-      />
-      <div className="mx-3 mt-2 mb-3 h-px bg-border/70" />
       <ProjectFileTree />
       <div className="mx-3 mt-3 mb-1 h-px bg-border/70" />
       <DemoTrigger />
@@ -318,43 +271,27 @@ function DirectionsSection({
                   type="button"
                   onClick={() => onSelect(direction.id)}
                   className={cn(
-                    "press group relative w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-left",
+                    "press group w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left",
                     "transition-[background-color,color] duration-150 [transition-timing-function:var(--ease-natural)]",
                     active
-                      ? "bg-primary/12 text-foreground font-medium"
-                      : "text-foreground/85 hover:bg-secondary/60",
+                      ? "bg-primary/15 text-foreground font-medium"
+                      : "text-foreground/80 hover:bg-secondary/70",
                   )}
-                  style={{ paddingLeft: 12 + depth * 14 }}
+                  style={{ paddingLeft: 10 + depth * 16 }}
                   title={
                     direction.forkedAtCommit
                       ? `${label} - forked at ${direction.forkedAtCommit.slice(0, 7)}`
                       : label
                   }
                 >
-                  <span
-                    className={cn(
-                      "absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-primary origin-top",
-                      "transition-[opacity,transform] duration-200 [transition-timing-function:var(--ease-out)]",
-                      active ? "opacity-100 scale-y-100" : "opacity-0 scale-y-50",
-                    )}
-                    aria-hidden
-                  />
                   {active ? (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
-                  ) : depth > 0 ? (
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                    <Check className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--accent-deep))]" />
                   ) : (
-                    <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                    <DirectionDot color={direction.directionColor} active={false} />
                   )}
-                  <DirectionDot color={direction.directionColor} active={active} />
                   <span className="min-w-0 flex-1 truncate text-[12.5px]">
                     {label}
                   </span>
-                  {direction.forkedAtCommit && (
-                    <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/45">
-                      fork
-                    </span>
-                  )}
                 </button>
               </li>
             )

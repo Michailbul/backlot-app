@@ -21,20 +21,24 @@
  * (placeholder for now; CodeMirror in Phase D2).
  */
 
-import { type ReactNode, useEffect, useRef } from "react"
+import { type ReactNode } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { atomWithStorage } from "jotai/utils"
 import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clapperboard,
+  FolderTree,
   GitBranch,
+  LayoutGrid,
   MessageSquare,
   MessageSquarePlus,
+  PanelLeft,
+  PanelRight,
+  PenLine,
   Plus,
   Trash2,
 } from "lucide-react"
-import { motion } from "motion/react"
 import { toast } from "sonner"
 import { ProjectTreeRail } from "./project-tree-rail"
 import { ScreenplayPane } from "./screenplay-pane"
@@ -42,12 +46,18 @@ import { PromptsModeView } from "./prompts-mode-view"
 import { CanvasModeView } from "./canvas-mode-view"
 import { EntityEditor } from "./entity-editor"
 import { ShotlistSurface } from "./shotlist-surface"
-import { activeEntityAtom, viewModeAtom } from "./atoms"
-import { Sparkles } from "lucide-react"
 import {
-  detailsSidebarOpenAtom,
-  detailsSidebarWidthAtom,
-} from "../details-sidebar/atoms"
+  activeEntityAtom,
+  assistantRailOpenAtom,
+  projectTreeOpenAtom,
+  viewModeAtom,
+} from "./atoms"
+import {
+  agentsSidebarOpenAtom,
+  isDesktopAtom,
+  isFullscreenAtom,
+} from "../../lib/atoms"
+import { Sparkles } from "lucide-react"
 import {
   selectedAgentChatIdAtom,
   selectedProjectAtom,
@@ -62,252 +72,146 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu"
+import { GlassFilter } from "../../components/ui/liquid-glass-filter"
 import { trpc } from "../../lib/trpc"
 import { cn } from "../../lib/utils"
-
-const ASSISTANT_RAIL_OPEN_ATOM = atomWithStorage("backlot:assistant-rail-open", true)
-
-const RAIL_BASE_WIDTH = 420 // px — wide enough for chat bubbles + tool chips, narrow enough that the screenplay still breathes
-const DETAILS_FALLBACK_WIDTH = 500 // matches detailsSidebarWidthAtom default in case the atom isn't initialised yet
 
 interface ScreenplayWorkspaceProps {
   chatId: string | null
   directionName?: string | null
-  /** The existing <ChatView /> goes here. */
-  assistant: ReactNode
 }
 
 export function ScreenplayWorkspace({
   chatId,
   directionName,
-  assistant,
 }: ScreenplayWorkspaceProps) {
-  const [railOpen, setRailOpen] = useAtom(ASSISTANT_RAIL_OPEN_ATOM)
-
-  // When the chat opens its inline DetailsSidebar (Workspace / Branch /
-  // Path / Changes / MCP), it demands ~500px of its own. With the rail
-  // pinned at 420px the details column overflows the right edge of the
-  // window. Subscribe to both atoms so the rail grows when details opens
-  // and shrinks back when it closes — driven by the atoms instead of
-  // being implicit in the flex tree.
-  const isDetailsOpen = useAtomValue(detailsSidebarOpenAtom)
-  const detailsWidth = useAtomValue(detailsSidebarWidthAtom) ?? DETAILS_FALLBACK_WIDTH
-  const railWidth = isDetailsOpen
-    ? RAIL_BASE_WIDTH + detailsWidth
-    : RAIL_BASE_WIDTH
-
-  // Cmd+\ (or Ctrl+\) toggles the assistant rail. Single keystroke, mirrors
-  // VS Code / Cursor's secondary-sidebar shortcut. Saves the user from
-  // having to hunt for the tiny edge chevron when the rail is collapsed.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const isMac = navigator.platform.toUpperCase().includes("MAC")
-      const mod = isMac ? e.metaKey : e.ctrlKey
-      if (mod && e.key === "\\") {
-        e.preventDefault()
-        setRailOpen((v) => !v)
-      }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [setRailOpen])
-
   return (
-    <div className="flex h-full w-full overflow-hidden">
-      {/* Left rail — project tree navigator. Collapsible. */}
-      <ProjectTreeRail />
+    <div className="relative flex h-full w-full overflow-hidden bg-background">
+      {/* Master canvas — the editor's own paper tone fills the window.
+          A faint lime halo keeps it from reading dead-flat. */}
+      <AmbientCanvas />
 
-      {/* Center — mode toggle + content. Distinct workflow surfaces:
-            · Screenwriting → ScreenplayPane (existing editor flow)
-            · Prompts       → PromptsModeView (screenplay ref left,
-                              free-text prompt blocks center, chat right)
-            · Shotlist      → ShotlistSurface (Runway prompt queue)
-          Toggling is a workflow shift, NOT a layout split — only one
-          surface is visible at a time so the user is never confused
-          about which mode they're in. */}
-      <div className="flex-1 min-w-0 relative flex flex-col">
-        <ModeToggleStrip />
-        <LineageBreadcrumb />
-        <div className="flex-1 min-h-0">
-          <ModeAwareCenter chatId={chatId} directionName={directionName} />
+      {/* Floating-island shell — project tree on the left, the editor on
+          the bare canvas with the workflow mode dock at its bottom edge.
+          The assistant rail is hoisted to AgentsLayout so it can span the
+          full window height; it is no longer a child here. */}
+      <div className="relative z-10 flex h-full w-full gap-2.5 p-2.5">
+        {/* Left rail — project tree navigator. */}
+        <ProjectTreeRail />
+
+        {/* Center column — the editor on the bare canvas. Its own macOS
+            chrome strip sits on top; the workflow mode dock floats at its
+            bottom edge. */}
+        <div className="relative flex-1 min-w-0 flex flex-col">
+          <AppTopBar workspace />
+          <div className="relative flex-1 min-h-0 flex flex-col">
+            <LineageBreadcrumb />
+            <div className="flex-1 min-h-0">
+              <ModeAwareCenter chatId={chatId} directionName={directionName} />
+            </div>
+          </div>
+          <ModeDock />
         </div>
-
-        {/* Show-assistant pill — vertical label on the right edge. Big enough
-            to find without hunting; clickable across the whole pill. */}
-        {!railOpen && (
-          // Positioning shell — handles vertical centering. The button
-          // child handles its own press/hover transforms without fighting
-          // the centering translate.
-          <div className="absolute top-1/2 -translate-y-1/2 right-0 z-30 [animation:rail-pill-enter_220ms_var(--ease-out)_forwards]">
-            <button
-              type="button"
-              onClick={() => setRailOpen(true)}
-              className={cn(
-                "press group",
-                "flex flex-col items-center justify-center gap-2",
-                "w-9 py-4 rounded-l-lg border border-r-0 border-border",
-                "bg-primary text-primary-foreground",
-                "shadow-lg",
-                "transition-shadow duration-200 [transition-timing-function:var(--ease-out)]",
-                "hover:shadow-xl",
-              )}
-              title="Show assistant (Cmd+\\)"
-              aria-label="Show assistant"
-            >
-              <MessageSquare className="h-4 w-4" />
-              <span
-                className="text-[10px] uppercase tracking-[0.18em] font-mono"
-                style={{ writingMode: "vertical-rl" }}
-              >
-                Assistant
-              </span>
-              <ChevronLeft className="h-3 w-3 transition-transform duration-200 [transition-timing-function:var(--ease-out)] group-hover:-translate-x-0.5" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Right rail — assistant. Width grows when the chat's inline Details
-          panel is open so it doesn't overflow off the right edge of the window. */}
-      {railOpen && (
-        <aside
-          className="border-l border-border bg-background/40 relative shrink-0 flex flex-col transition-[width] duration-150 ease-out"
-          style={{ width: railWidth }}
-        >
-          {/* Rail header */}
-          <div className="flex items-center justify-between gap-2 h-9 px-3 border-b border-border bg-card/40 select-none shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
-              <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 font-mono">
-                Assistant
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <ThreadSwitcher />
-              <ForkActiveButton />
-              <button
-                type="button"
-                onClick={() => setRailOpen(false)}
-                className={cn(
-                  "press flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider",
-                  "text-muted-foreground hover:text-foreground hover:bg-secondary",
-                  "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
-                )}
-                title="Hide assistant (Cmd+\\)"
-                aria-label="Hide assistant"
-              >
-                Hide
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Chat — existing ChatView, unchanged. */}
-          <div className="flex-1 min-h-0 overflow-hidden">{assistant}</div>
-        </aside>
-      )}
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────────────────
-// ModeToggleStrip — top-of-pane tabs for the workflow stages.
-//
-//   [ ✎ Screenwriting ]  [ ✦ Prompts ]  [ Shotlist ]
-//
-// Distinct surfaces, NOT a layout split. The user shifts pipeline stages
-// here; the chosen mode persists in viewModeAtom across reloads.
-// ────────────────────────────────────────────────────────────────────────
-
-/**
- * The masthead — a few words, a moving Coral nib. Reads more like a magazine
- * masthead than an OS tab strip. Active item: foreground tone + a thin
- * Coral underline that slides between the items using framer-motion's
- * shared-layoutId trick. Inactive item: muted, no underline. The point
- * is to feel like an editor turning a manuscript page, not toggling a
- * setting.
- */
-function ModeToggleStrip() {
-  const [mode, setMode] = useAtom(viewModeAtom)
-  return (
-    <div className="relative flex items-stretch h-11 border-b border-border/50 bg-background select-none shrink-0">
-      <div className="flex items-stretch gap-8 pl-6 pr-6">
-        <ModeMastheadItem
-          label="Screenwriting"
-          active={mode === "screenwriting"}
-          onClick={() => setMode("screenwriting")}
-        />
-        <ModeMastheadItem
-          label="Prompts"
-          active={mode === "prompts"}
-          onClick={() => setMode("prompts")}
-        />
-        <ModeMastheadItem
-          label="Shotlist"
-          active={mode === "shotlist"}
-          onClick={() => setMode("shotlist")}
-        />
-        <ModeMastheadItem
-          label="Canvas"
-          active={mode === "canvas"}
-          onClick={() => setMode("canvas")}
-        />
-      </div>
-      {/* Right edge: a single tracked-mono caption identifying the
-          current pipeline stage. Reinforces the masthead without
-          competing with it. */}
-      <div className="ml-auto flex items-center pr-5">
-        <span
-          className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground/45"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {mode === "screenwriting"
-            ? "The page"
-            : mode === "prompts"
-              ? "The prompt"
-              : mode === "shotlist"
-                ? "The shotlist"
-                : "The board"}
-        </span>
       </div>
     </div>
   )
 }
 
-function ModeMastheadItem({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
+// ────────────────────────────────────────────────────────────────────────
+// AmbientCanvas — the shell's only ambient touch. Clean/minimal: no grain,
+// no grid, just one whisper-faint lime wash from the top edge so the
+// canvas isn't dead-flat. Sits behind every panel at z-0.
+// ────────────────────────────────────────────────────────────────────────
+
+function AmbientCanvas() {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        // Editorial masthead item — text-only, the active marker is the
-        // sliding Coral nib (motion.span layoutId="mode-nib" below), not
-        // a button background. `.press` from the animation pass gives it
-        // the standard interactive feedback shared by every button.
-        "press relative flex items-center px-1 text-[12px] tracking-[0.04em]",
-        active
-          ? "text-foreground"
-          : "text-muted-foreground/65 hover:text-foreground/85",
-      )}
-      style={{ fontFamily: "var(--font-body)", fontWeight: 500 }}
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
     >
-      <span>{label}</span>
-      {active && (
-        <motion.span
-          layoutId="mode-nib"
-          className="absolute left-0 right-0 -bottom-px h-[2px] bg-primary"
-          transition={{ type: "spring", stiffness: 480, damping: 38 }}
+      <div
+        className="absolute inset-x-0 top-0 h-[34vh]"
+        style={{
+          background:
+            "radial-gradient(ellipse 58% 100% at 50% 0%, hsl(var(--primary) / 0.06) 0%, transparent 72%)",
+        }}
+      />
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// ModeDock — the workflow-stage switcher. A floating liquid-glass dock
+// pinned to the bottom-centre of the editor: Screenwriting · Prompts ·
+// Shotlist · Canvas. A kiwi thumb slides under the active stage; the
+// glass surface refracts the canvas through an SVG displacement filter.
+// ────────────────────────────────────────────────────────────────────────
+
+const WORKFLOW_MODES = [
+  { id: "screenwriting", label: "Screenwriting", Icon: PenLine },
+  { id: "prompts", label: "Prompts", Icon: Sparkles },
+  { id: "shotlist", label: "Shotlist", Icon: Clapperboard },
+  { id: "canvas", label: "Canvas", Icon: LayoutGrid },
+] as const
+
+function ModeDock() {
+  const [mode, setMode] = useAtom(viewModeAtom)
+  const activeIndex = Math.max(
+    0,
+    WORKFLOW_MODES.findIndex((m) => m.id === mode),
+  )
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex justify-center">
+      <GlassFilter />
+      <div
+        className={cn(
+          "pointer-events-auto relative grid grid-cols-4 h-11 p-1 rounded-2xl",
+          "border border-white/55",
+          "shadow-[0_1px_2px_rgba(20,22,14,0.06),0_14px_34px_-12px_rgba(20,22,14,0.30)]",
+        )}
+        style={{
+          background: "hsl(0 0% 100% / 0.5)",
+          backdropFilter: "url(#bl-glass-displace) blur(3px) saturate(150%)",
+          WebkitBackdropFilter: "url(#bl-glass-displace) blur(3px) saturate(150%)",
+        }}
+      >
+        {/* Sliding glass-button thumb — the raised liquid-glass switch
+            from the reference component. */}
+        <span
+          aria-hidden
+          className={cn(
+            "absolute inset-y-1 left-1 rounded-xl bg-primary",
+            "shadow-[0_0_6px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08),inset_3px_3px_0.5px_-3px_rgba(0,0,0,0.9),inset_-3px_-3px_0.5px_-3px_rgba(0,0,0,0.85),inset_1px_1px_1px_-0.5px_rgba(0,0,0,0.6),inset_-1px_-1px_1px_-0.5px_rgba(0,0,0,0.6),inset_0_0_6px_6px_rgba(0,0,0,0.12),inset_0_0_2px_2px_rgba(0,0,0,0.06),0_0_12px_rgba(255,255,255,0.15)]",
+            "dark:shadow-[0_0_8px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08),inset_3px_3px_0.5px_-3.5px_rgba(255,255,255,0.09),inset_-3px_-3px_0.5px_-3.5px_rgba(255,255,255,0.85),inset_1px_1px_1px_-0.5px_rgba(255,255,255,0.6),inset_-1px_-1px_1px_-0.5px_rgba(255,255,255,0.6),inset_0_0_6px_6px_rgba(255,255,255,0.12),inset_0_0_2px_2px_rgba(255,255,255,0.06),0_0_12px_rgba(0,0,0,0.15)]",
+            "transition-transform duration-300 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]",
+          )}
+          style={{
+            width: "calc((100% - 0.5rem) / 4)",
+            transform: `translateX(${activeIndex * 100}%)`,
+          }}
         />
-      )}
-    </button>
+        {WORKFLOW_MODES.map(({ id, label, Icon }) => {
+          const active = mode === id
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setMode(id)}
+              className={cn(
+                "press relative z-10 flex items-center justify-center gap-1.5 rounded-xl px-3 text-[12px]",
+                "transition-colors duration-200 [transition-timing-function:var(--ease-natural)]",
+                active
+                  ? "text-primary-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -789,7 +693,7 @@ function LineageBreadcrumb() {
   if (chain.length <= 1) return null
 
   return (
-    <div className="flex items-center gap-1 h-6 px-3 border-b border-border bg-card/20 select-none shrink-0 overflow-hidden">
+    <div className="flex items-center gap-1.5 h-8 px-1 pb-1.5 select-none shrink-0 overflow-hidden">
       <GitBranch className="h-3 w-3 text-muted-foreground/60 shrink-0" />
       <div className="flex items-center gap-1 text-[11px] font-mono tabular-nums truncate">
         {chain.map((d, idx) => {
@@ -829,5 +733,127 @@ function LineageBreadcrumb() {
         })}
       </div>
     </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// AppTopBar — the macOS chrome strip for the editor column. Holds the
+// panel toggles on the left, the project title centred, and the assistant
+// toggle on the right. The strip is transparent (the canvas shows through)
+// and is a window-drag region. It reserves space for the native traffic
+// lights only when the editor column is itself the left-most panel — both
+// side rails collapsed — since otherwise the lights sit over a side rail.
+//
+// `workspace` = full project chrome (file-tree + assistant toggles).
+// Without it the bar is the lighter fallback used by Settings / new-chat.
+// ────────────────────────────────────────────────────────────────────────
+
+export function AppTopBar({ workspace = false }: { workspace?: boolean }) {
+  const isDesktop = useAtomValue(isDesktopAtom)
+  const isFullscreen = useAtomValue(isFullscreenAtom)
+  const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom)
+  const [treeOpen, setTreeOpen] = useAtom(projectTreeOpenAtom)
+  const [assistantOpen, setAssistantOpen] = useAtom(assistantRailOpenAtom)
+  const project = useAtomValue(selectedProjectAtom)
+
+  const isMac =
+    typeof navigator !== "undefined" &&
+    navigator.platform.toUpperCase().includes("MAC")
+
+  // Windows has its own WindowsTitleBar; the web build has no chrome.
+  if (!isDesktop || !isMac) return null
+
+  // The traffic lights sit at the window's top-left. They land on the
+  // editor column only when every panel to its left is collapsed: the
+  // projects sidebar always, and the file rail too on a workspace
+  // surface. Reserve the 72px just for that case.
+  const filesRailToLeft = workspace && treeOpen
+  const reserve = !isFullscreen && !sidebarOpen && !filesRailToLeft
+
+  return (
+    <div
+      className="relative z-30 shrink-0 flex items-stretch h-10"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    >
+      {/* Left — panel collapse toggles (un-dragged so they stay clickable),
+          after an optional traffic-light reserve. */}
+      <div
+        className="flex items-center"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        {reserve && <div aria-hidden className="w-[72px] shrink-0" />}
+        <div className="flex items-center gap-0.5 pl-1.5">
+          <TopBarToggle
+            onClick={() => setSidebarOpen((v) => !v)}
+            title={sidebarOpen ? "Hide projects sidebar" : "Show projects sidebar"}
+          >
+            <PanelLeft className="h-4 w-4" />
+          </TopBarToggle>
+          {workspace && (
+            <TopBarToggle
+              onClick={() => setTreeOpen((v) => !v)}
+              title={treeOpen ? "Hide file explorer" : "Show file explorer"}
+            >
+              <FolderTree className="h-4 w-4" />
+            </TopBarToggle>
+          )}
+        </div>
+      </div>
+
+      {/* Centre — the project title, native-window-title style. */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="flex items-center gap-1.5 text-[12px]">
+          <span className="text-muted-foreground/70">Backlot</span>
+          {project?.name && (
+            <>
+              <span className="text-muted-foreground/40">/</span>
+              <span className="font-medium text-foreground/90">{project.name}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Right — assistant rail toggle. The rail owns its own header
+          (name + close); this stays so a closed rail can be reopened. */}
+      {workspace && (
+        <div
+          className="ml-auto flex items-center pr-1.5"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <TopBarToggle
+            onClick={() => setAssistantOpen((v) => !v)}
+            title={assistantOpen ? "Hide assistant" : "Show assistant"}
+          >
+            <PanelRight className="h-4 w-4" />
+          </TopBarToggle>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TopBarToggle({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={cn(
+        "press flex items-center justify-center h-7 w-7 rounded-md",
+        "text-muted-foreground hover:text-foreground hover:bg-foreground/10",
+        "transition-[color,background-color] duration-150 [transition-timing-function:var(--ease-natural)]",
+      )}
+    >
+      {children}
+    </button>
   )
 }

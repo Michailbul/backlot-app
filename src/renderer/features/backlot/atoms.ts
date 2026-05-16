@@ -139,3 +139,20 @@ export const refsPanelHeightAtom = atomWithStorage<number>(
   "backlot:refs-panel-height",
   140,
 )
+
+/**
+ * Assistant rail — user-set base width in pixels. Drag the handle on the
+ * rail's left edge to resize; persisted across reloads. The rendered rail
+ * grows beyond this when the chat's inline Details panel opens (the extra
+ * width is added on top in the workspace, leaving this base untouched).
+ */
+export const assistantRailWidthAtom = atomWithStorage<number>(
+  "backlot:assistant-rail-width",
+  420,
+)
+
+/** Assistant rail — open/closed. The toggle lives in the AppTopBar. */
+export const assistantRailOpenAtom = atomWithStorage<boolean>(
+  "backlot:assistant-rail-open",
+  true,
+)

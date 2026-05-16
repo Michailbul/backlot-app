@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from "react"
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useMemo,
+  useRef,
+} from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { isDesktopApp } from "../../lib/utils/platform"
+import { cn } from "../../lib/utils"
+import { assistantRailOpenAtom, projectTreeOpenAtom } from "../backlot/atoms"
 import { useIsMobile } from "../../lib/hooks/use-mobile"
 
 import {
@@ -12,6 +20,8 @@ import {
   anthropicOnboardingCompletedAtom,
   customHotkeysAtom,
   betaKanbanEnabledAtom,
+  betaAutomationsEnabledAtom,
+  chatSourceModeAtom,
 } from "../../lib/atoms"
 import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom, desktopViewAtom, fileSearchDialogOpenAtom } from "../agents/atoms"
 import { trpc } from "../../lib/trpc"
@@ -30,6 +40,10 @@ import { useUpdateChecker } from "../../lib/hooks/use-update-checker"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import { QueueProcessor } from "../agents/components/queue-processor"
 import { SettingsSidebar } from "../settings/settings-sidebar"
+import { ChatView } from "../agents/main/active-chat"
+import { NoChatAssistantPanel } from "../agents/ui/no-chat-assistant-panel"
+import { AssistantRail } from "../backlot/assistant-rail"
+import { AppTopBar } from "../backlot/screenplay-workspace"
 
 // ============================================================================
 // Constants
@@ -39,6 +53,11 @@ const SIDEBAR_MIN_WIDTH = 160
 const SIDEBAR_MAX_WIDTH = 300
 const SIDEBAR_ANIMATION_DURATION = 0
 const SIDEBAR_CLOSE_HOTKEY = "⌘\\"
+
+// Soft all-around shadow that lifts the Projects panel off the canvas as a
+// floating island.
+const FLOATING_PANEL_SHADOW =
+  "0 0 0 0.5px hsl(var(--border) / 0.55), 0 2px 5px rgba(20, 20, 20, 0.05), 0 12px 30px -10px rgba(20, 20, 20, 0.17)"
 
 // ============================================================================
 // Component
@@ -96,6 +115,10 @@ export function AgentsLayout() {
   const setSelectedDraftId = useSetAtom(selectedDraftIdAtom)
   const setShowNewChatForm = useSetAtom(showNewChatFormAtom)
   const betaKanbanEnabled = useAtomValue(betaKanbanEnabledAtom)
+  const betaAutomationsEnabled = useAtomValue(betaAutomationsEnabledAtom)
+  const selectedDraftId = useAtomValue(selectedDraftIdAtom)
+  const showNewChatForm = useAtomValue(showNewChatFormAtom)
+  const chatSourceMode = useAtomValue(chatSourceModeAtom)
   const setDesktopView = useSetAtom(desktopViewAtom)
   const setAnthropicOnboardingCompleted = useSetAtom(
     anthropicOnboardingCompletedAtom
@@ -144,8 +167,10 @@ export function AgentsLayout() {
     )
       return
 
-    window.desktopApi.setTrafficLightVisibility(sidebarOpen)
-  }, [sidebarOpen, isDesktop])
+    // Traffic lights live in the always-present AppTopBar now, so keep
+    // them visible regardless of the Projects-sidebar state.
+    window.desktopApi.setTrafficLightVisibility(true)
+  }, [isDesktop])
 
   const setChatId = useAgentSubChatStore((state) => state.setChatId)
 
@@ -245,6 +270,40 @@ export function AgentsLayout() {
       }
     : null
 
+  // Assistant rail — hoisted here so it spans the full window height as a
+  // top-level column, beside the macOS chrome strip rather than tucked
+  // under it. It shows for exactly the views that render
+  // ScreenplayWorkspace; this mirrors the branch order in AgentsContent's
+  // desktop layout (settings / automations take over the whole surface;
+  // a draft, the new-chat form, or Kanban replace the project view).
+  const isAutomationsView =
+    betaAutomationsEnabled &&
+    (desktopView === "automations" ||
+      desktopView === "automations-detail" ||
+      desktopView === "inbox")
+  const isWorkspaceSurface =
+    !isMobile &&
+    !isSettingsView &&
+    !isAutomationsView &&
+    (selectedChatId != null ||
+      (validatedProject != null &&
+        !selectedDraftId &&
+        !showNewChatForm &&
+        !betaKanbanEnabled))
+
+  // The chat itself — the existing <ChatView />, preserved verbatim with a
+  // stable key so the stream and chat state survive across re-renders.
+  const assistantNode = selectedChatId ? (
+    <ChatView
+      key={`${chatSourceMode}-${selectedChatId}`}
+      chatId={selectedChatId}
+      isSidebarOpen={sidebarOpen}
+      onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+    />
+  ) : (
+    <NoChatAssistantPanel />
+  )
+
   return (
     <TooltipProvider delayDuration={300}>
       {/* Global queue processor - handles message queues for all sub-chats */}
@@ -258,37 +317,56 @@ export function AgentsLayout() {
         {/* Windows Title Bar (only shown on Windows with frameless window) */}
         <WindowsTitleBar />
         <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar - switches between chat list and settings nav */}
+          {/* Projects sidebar — a full-window-height column. Its own macOS
+              band sits on top so the panel reaches the window's top edge. */}
           <ResizableSidebar
-          isOpen={!isMobile && sidebarOpen}
-          onClose={handleCloseSidebar}
-          widthAtom={agentsSidebarWidthAtom}
-          minWidth={SIDEBAR_MIN_WIDTH}
-          maxWidth={SIDEBAR_MAX_WIDTH}
-          side="left"
-          closeHotkey={SIDEBAR_CLOSE_HOTKEY}
-          animationDuration={SIDEBAR_ANIMATION_DURATION}
-          initialWidth={0}
-          exitWidth={0}
-          showResizeTooltip={!isSettingsView}
-          className="overflow-hidden bg-background border-r"
-          style={{ borderRightWidth: "0.5px" }}
-        >
-          {isSettingsView ? (
-            <SettingsSidebar />
-          ) : (
-            <AgentsSidebar
-              desktopUser={sidebarDesktopUser}
-              onSignOut={handleSignOut}
-              onToggleSidebar={handleCloseSidebar}
-            />
-          )}
-        </ResizableSidebar>
+            isOpen={!isMobile && sidebarOpen}
+            onClose={handleCloseSidebar}
+            widthAtom={agentsSidebarWidthAtom}
+            minWidth={SIDEBAR_MIN_WIDTH}
+            maxWidth={SIDEBAR_MAX_WIDTH}
+            side="left"
+            closeHotkey={SIDEBAR_CLOSE_HOTKEY}
+            animationDuration={SIDEBAR_ANIMATION_DURATION}
+            initialWidth={0}
+            exitWidth={0}
+            disableResize
+            className="bg-background p-2"
+            style={{ overflow: "visible" }}
+          >
+            {/* Floating island — full height, rounded, inset from the
+                window edges so the panel reads as a lifted card. The
+                sidebar's own header carries the macOS chrome: its wordmark
+                row clears the traffic lights, no empty band on top. */}
+            <div
+              className="h-full overflow-hidden rounded-xl bg-tl-background"
+              style={{ boxShadow: FLOATING_PANEL_SHADOW }}
+            >
+              {isSettingsView ? (
+                <SettingsSidebar />
+              ) : (
+                <AgentsSidebar
+                  desktopUser={sidebarDesktopUser}
+                  onSignOut={handleSignOut}
+                  onToggleSidebar={handleCloseSidebar}
+                />
+              )}
+            </div>
+          </ResizableSidebar>
 
-          {/* Main Content */}
+          {/* Editor area. On the workspace surface, ScreenplayWorkspace
+              renders its own macOS strip per column; other views get the
+              fallback AppTopBar here. */}
           <div className="flex-1 overflow-hidden flex flex-col min-w-0">
-            <AgentsContent />
+            {!isMobile && !isWorkspaceSurface && <AppTopBar />}
+            <div className="flex-1 overflow-hidden flex flex-col min-w-0">
+              <AgentsContent />
+            </div>
           </div>
+
+          {/* Right — assistant rail. A full-window-height column so its
+              header strip sits on the macOS-chrome line. */}
+          {isWorkspaceSurface && <AssistantRail>{assistantNode}</AssistantRail>}
         </div>
 
         {/* Update Banner */}

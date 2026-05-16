@@ -25,6 +25,8 @@ interface ResizableSidebarProps {
   disableClickToClose?: boolean
   /** Show resize tooltip (Close/Resize instructions) */
   showResizeTooltip?: boolean
+  /** Disable width resizing — hides the resize handle entirely */
+  disableResize?: boolean
   /** Custom styles for the sidebar container */
   style?: React.CSSProperties
 }
@@ -50,6 +52,7 @@ export function ResizableSidebar({
   dataAttributes,
   disableClickToClose = false,
   showResizeTooltip = false,
+  disableResize = false,
   style,
 }: ResizableSidebarProps) {
   const [sidebarWidth, setSidebarWidth] = useAtom(widthAtom)
@@ -376,6 +379,8 @@ export function ResizableSidebar({
               Object.entries(dataAttributes).map(([key, value]) => [`data-${key}`, value])
             ) : {})}
           >
+            {!disableResize && (
+              <>
             {/* Extended hover area */}
             <div
               data-extended-hover-area
@@ -464,6 +469,8 @@ export function ResizableSidebar({
               className={`absolute top-0 bottom-0 cursor-col-resize z-10`}
               style={resizeHandleStyle}
             />
+              </>
+            )}
 
             {/* Hover Tooltip - Notion style */}
             {showResizeTooltip &&

@@ -1,11 +1,12 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Darker+Grotesque:wght@500;600;700&family=Courier+Prime:wght@400;700&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
 @import "./agents-styles.css";
 
+/* Tailwind v4 loads the legacy theme config (colours mapped to CSS vars,
+   screens, borderRadius, darkMode: "class") via @config. */
+@config "../../../tailwind.config.js";
 @source "../../../node_modules/streamdown/dist/*.js";
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════
    BACKLOT — Tailwind / shadcn token layer mapped to the
@@ -29,37 +30,49 @@
    ═══════════════════════════════════════════════════════ */
 
 @layer base {
-  /* Light theme — Linen surface, Coral primary, Vermillion destructive. */
+  /* Light theme — Backlot's primary surface. Paper-white canvas,
+     Lime accent (#C9E34B), liquid-glass panels. Editorial, bright,
+     modern. The accent is bright, so it carries dark "accent ink"
+     for text/icons that sit on top of it. */
   :root {
-    --background: 27 100% 96%;          /* Linen */
-    --foreground: 0 0% 10%;             /* Carbon */
-    --card: 27 100% 98%;
-    --card-foreground: 0 0% 10%;
-    --popover: 27 100% 98%;
-    --popover-foreground: 0 0% 10%;
-    --primary: 4 86% 64%;               /* Coral */
-    --primary-foreground: 27 100% 96%;
-    --secondary: 24 27% 92%;            /* Bone */
-    --secondary-foreground: 0 0% 10%;
-    --muted: 24 27% 92%;
-    --muted-foreground: 0 0% 30%;
-    --accent: 24 35% 88%;
-    --accent-foreground: 0 0% 10%;
+    --background: 74 16% 96%;           /* Master canvas — warm paper; islands float on it */
+    --foreground: 72 25% 8%;            /* Ink — near-black, green undertone */
+    --card: 0 0% 100%;                  /* Surface — pure white panels */
+    --card-foreground: 72 25% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 72 25% 8%;
+    --primary: 70 73% 59%;              /* Lime #C9E34B */
+    --primary-foreground: 71 51% 8%;    /* Accent ink — dark olive */
+    --secondary: 67 24% 93%;            /* Soft paper-grey */
+    --secondary-foreground: 72 25% 8%;
+    --muted: 67 24% 93%;
+    --muted-foreground: 80 8% 35%;      /* Muted ink */
+    --accent: 69 29% 91%;               /* shadcn hover-fill — soft */
+    --accent-foreground: 72 25% 8%;
     --destructive: 7 76% 52%;           /* Vermillion */
-    --destructive-foreground: 27 100% 96%;
-    --border: 24 20% 85%;
-    --input: 24 20% 88%;
-    --input-background: 24 35% 92%;
-    --ring: 21 100% 63%;                /* Ember focus ring */
-    --selection: 21 100% 63% / 0.28;
-    --radius: 0.5rem;
-    /* Plan Mode (kept for upstream compatibility; recolored to Amber.) */
-    --plan-mode: 38 80% 56%;
-    --plan-mode-foreground: 0 0% 10%;
-    --tl-background: 27 100% 98%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 70 21% 89%;               /* Hairline */
+    --input: 70 21% 89%;
+    --input-background: 0 0% 100%;
+    --ring: 70 73% 59%;                 /* Lime focus ring */
+    --selection: 70 73% 59% / 0.32;
+    --radius: 0.625rem;
+    /* Accent as text on light surfaces — raw lime fails contrast on
+       white, so links / eyebrows use this darkened olive-lime. */
+    --accent-deep: 71 59% 27%;
+    /* Liquid-glass — translucent panel fill + edge over the canvas. */
+    --glass: 0 0% 100% / 0.62;
+    --glass-strong: 0 0% 100% / 0.85;
+    --glass-edge: 70 21% 89% / 0.7;
+    /* Plan Mode (kept for upstream compatibility; recolored to Lime.) */
+    --plan-mode: 70 73% 59%;
+    --plan-mode-foreground: 71 51% 8%;
+    --tl-background: 0 0% 100%;
   }
 
-  /* Dark theme — Obsidian surface, Ember primary. Studio default. */
+  /* Dark theme — Obsidian surface, Lime accent. Kept in sync with the
+     light theme's accent so brand colour is consistent across modes;
+     light is Backlot's primary target. */
   .dark {
     --background: 24 33% 3%;            /* Obsidian */
     --foreground: 27 100% 96%;          /* Linen */
@@ -67,8 +80,8 @@
     --card-foreground: 27 100% 96%;
     --popover: 0 0% 10%;                /* Carbon */
     --popover-foreground: 27 100% 96%;
-    --primary: 21 100% 63%;             /* Ember */
-    --primary-foreground: 0 0% 10%;
+    --primary: 70 73% 59%;              /* Lime #C9E34B */
+    --primary-foreground: 71 51% 8%;    /* Accent ink */
     --secondary: 0 0% 14%;
     --secondary-foreground: 27 100% 96%;
     --muted: 0 0% 12%;
@@ -80,11 +93,16 @@
     --border: 0 0% 17%;
     --input: 0 0% 14%;
     --input-background: 0 0% 12%;
-    --ring: 21 100% 63%;                /* Ember */
-    --selection: 21 100% 63% / 0.32;
-    /* Plan Mode (kept for upstream compatibility; recolored to Amber.) */
-    --plan-mode: 38 80% 56%;
-    --plan-mode-foreground: 0 0% 10%;
+    --ring: 70 73% 59%;                 /* Lime */
+    --selection: 70 73% 59% / 0.30;
+    /* On dark surfaces the lime reads fine as text directly. */
+    --accent-deep: 70 73% 62%;
+    --glass: 0 0% 9% / 0.6;
+    --glass-strong: 0 0% 9% / 0.85;
+    --glass-edge: 0 0% 100% / 0.08;
+    /* Plan Mode (kept for upstream compatibility; recolored to Lime.) */
+    --plan-mode: 70 73% 59%;
+    --plan-mode-foreground: 71 51% 8%;
     --tl-background: 0 0% 8%;
   }
 }
@@ -193,6 +211,88 @@
       transform: none !important;
     }
   }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Panel surfaces — clean / minimal.
+
+   Backlot's shell is flat and crisp: solid panels, hairline
+   edges, no blur, no texture. The `.bl-glass*` class names
+   are kept so existing markup stays valid, but the treatment
+   is now a plain card surface — the Linear / Cal.com register
+   the redesign targets. `.bl-glass` defines border-color, so
+   panels just add a `border` side + radius.
+   ═══════════════════════════════════════════════════════ */
+.bl-glass,
+.bl-glass-strong {
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+/* Glass sheen retired in the clean/minimal pass — flat panels
+   don't catch a highlight. Kept as a no-op so `.bl-glass-sheen`
+   in existing markup is harmless. */
+.bl-glass-sheen::before {
+  content: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Floating islands — the redesigned shell.
+
+   Every chrome panel (project rail, mode strip, assistant
+   rail) is a white card lifted off the master canvas with a
+   soft two-layer shadow: a tight contact shadow plus a wide
+   ambient one. The canvas — the editor's own paper tone —
+   shows through the gutters between islands, so the shell
+   reads as panels resting on one continuous surface.
+   ═══════════════════════════════════════════════════════ */
+.bl-island {
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  box-shadow:
+    0 1px 2px rgba(20, 22, 14, 0.05),
+    0 10px 28px -14px rgba(20, 22, 14, 0.18);
+}
+.dark .bl-island {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 12px 30px -14px rgba(0, 0, 0, 0.65);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Liquid glass — a translucent, backdrop-blurred island
+   surface (the top navbar). The warm canvas and the lime
+   ambient halo glow through it, a 1px top sheen catches
+   the light, a hairline + island shadow lift it off the
+   canvas. Frosted, not opaque. Per ui-ux-pro-max: light
+   mode keeps the fill opaque enough (~70%+) for legible
+   text — a near-transparent glass fails contrast.
+   ═══════════════════════════════════════════════════════ */
+.bl-liquid-glass {
+  background: linear-gradient(
+    180deg,
+    hsl(0 0% 100% / 0.82) 0%,
+    hsl(0 0% 100% / 0.62) 100%
+  );
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid hsl(var(--border) / 0.8);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.7),
+    0 1px 2px rgba(20, 22, 14, 0.05),
+    0 10px 28px -14px rgba(20, 22, 14, 0.16);
+}
+.dark .bl-liquid-glass {
+  background: linear-gradient(
+    180deg,
+    hsl(0 0% 13% / 0.80) 0%,
+    hsl(0 0% 9% / 0.6) 100%
+  );
+  border-color: hsl(0 0% 100% / 0.1);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 12px 30px -14px rgba(0, 0, 0, 0.6);
 }
 
 /* ═══════════════════════════════════════════════════════

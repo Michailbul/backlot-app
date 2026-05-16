@@ -344,100 +344,8 @@ function ActiveEntityFile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewable, buffer])
 
-  const label = "label" in active ? active.label : "Untitled"
-
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
-      {/* Header — editorial masthead. Kicker (mono caps) + display
-          headline. Right side: save state + path in mono. The hairline
-          rule is left-anchored Coral, like an editor's margin mark. */}
-      <header className="relative shrink-0 px-10 pt-7 pb-5 bg-background">
-        <div className="flex items-end justify-between gap-6">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block w-[14px] h-[1px] bg-primary"
-                aria-hidden
-              />
-              <span
-                className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground/75"
-                style={{ fontFamily: "var(--font-mono)" }}
-              >
-                {kindLabel(active.kind)}
-              </span>
-            </div>
-            <h1
-              className="mt-2 text-[34px] leading-[1.05] tracking-[-0.012em] text-foreground truncate"
-              style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}
-              title={label}
-            >
-              {label}
-            </h1>
-          </div>
-          <div className="flex flex-col items-end gap-1.5 shrink-0 pb-1">
-            <div className="flex items-center gap-2">
-              <SaveIndicator state={saveState} />
-              {previewable && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleToggleViewMode}
-                      className="h-6 w-6 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground"
-                      aria-label={
-                        viewMode === "source"
-                          ? isFountain
-                            ? "Preview screenplay"
-                            : "Preview markdown"
-                          : isFountain
-                            ? "Edit raw fountain"
-                            : "Edit raw markdown"
-                      }
-                    >
-                      <div className="relative w-4 h-4">
-                        <MarkdownIcon
-                          className={cn(
-                            "absolute inset-0 w-4 h-4 transition-[opacity,transform] duration-200 ease-out",
-                            viewMode !== "source"
-                              ? "opacity-100 scale-100"
-                              : "opacity-0 scale-75",
-                          )}
-                        />
-                        <CodeIcon
-                          className={cn(
-                            "absolute inset-0 w-4 h-4 transition-[opacity,transform] duration-200 ease-out",
-                            viewMode === "source"
-                              ? "opacity-100 scale-100"
-                              : "opacity-0 scale-75",
-                          )}
-                        />
-                      </div>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {viewMode === "source"
-                      ? isFountain
-                        ? "Preview screenplay"
-                        : "Preview markdown"
-                      : isFountain
-                        ? "Edit raw fountain"
-                        : "Edit raw markdown"}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-            <span
-              className="text-[10px] tracking-tight text-muted-foreground/55 truncate max-w-[320px]"
-              style={{ fontFamily: "var(--font-mono)" }}
-              title={path}
-            >
-              {path}
-            </span>
-          </div>
-        </div>
-        <div className="mt-5 h-px bg-border/70" />
-      </header>
+    <div className="flex flex-col h-full overflow-hidden">
 
       {/* Pending-changes banner — when the active file differs from
           HEAD (whether the agent or the user wrote them), surface a
@@ -602,9 +510,7 @@ function ActiveEntityFile({
               "w-full h-full pt-3",
               viewMode === "rendered" && [
                 "cursor-text",
-                "transition-[background-color] duration-150",
-                "hover:bg-foreground/[0.012] dark:hover:bg-foreground/[0.02]",
-                "focus:outline-none focus-visible:bg-foreground/[0.02]",
+                "focus:outline-none",
               ],
             )}
             aria-label="Edit markdown"
@@ -760,33 +666,6 @@ function KindIcon({ kind }: { kind: NonNullable<ActiveEntity>["kind"] }) {
   if (kind === "shot") return <Camera className={cls} />
   if (kind === "file") return <FileText className={cls} />
   return <FileText className={cls} />
-}
-
-function kindLabel(kind: NonNullable<ActiveEntity>["kind"]) {
-  switch (kind) {
-    case "brief":
-      return "Project brief"
-    case "world":
-      return "World bible"
-    case "main-script":
-      return "Main script"
-    case "character":
-      return "Character"
-    case "location":
-      return "Location"
-    case "act":
-      return "Act"
-    case "scene":
-      return "Scene"
-    case "shot":
-      return "Shot"
-    case "master-script":
-      return "Master script"
-    case "file":
-      return "File"
-    default:
-      return "File"
-  }
 }
 
 function SaveIndicator({ state }: { state: "idle" | "saving" | "saved" | "error" }) {

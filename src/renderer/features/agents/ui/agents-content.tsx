@@ -947,21 +947,12 @@ export function AgentsContent() {
             <InboxView />
           ) : selectedChatId ? (
             // Backlot screenwriter shape: the screenplay artifact owns the
-            // canvas; the existing <ChatView /> is preserved verbatim
-            // and slotted into the assistant rail on the right.
+            // canvas. The assistant rail (with the existing <ChatView />)
+            // is rendered by AgentsLayout so it can span the full window
+            // height beside the macOS chrome strip.
             <ScreenplayWorkspace
               chatId={selectedChatId}
               directionName={chatData?.name ?? null}
-              assistant={
-                <ChatView
-                  key={`${chatSourceMode}-${selectedChatId}`}
-                  chatId={selectedChatId}
-                  isSidebarOpen={sidebarOpen}
-                  onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-                  selectedTeamName={selectedTeam?.name}
-                  selectedTeamImageUrl={selectedTeam?.image_url}
-                />
-              }
             />
           ) : selectedDraftId || showNewChatForm ? (
             <div className="h-full flex flex-col relative overflow-hidden">
@@ -980,7 +971,6 @@ export function AgentsContent() {
             <ScreenplayWorkspace
               chatId={null}
               directionName={selectedProject.name}
-              assistant={<NoChatAssistantPanel />}
             />
           ) : (
             <div className="h-full flex flex-col relative overflow-hidden">
