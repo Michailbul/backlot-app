@@ -38,9 +38,11 @@ import {
   activeEntityAtom,
   projectTreeOpenAtom,
   projectTreeWidthAtom,
+  viewModeAtom,
   type ActiveEntity,
 } from "./atoms"
 import { ProjectFileTree } from "./project-file-tree"
+import { SkillExplorer } from "./skill-explorer"
 import { Resizer } from "./resizer"
 
 // ────────────────────────────────────────────────────────────────────────
@@ -160,6 +162,15 @@ export function ProjectTreeRail() {
 // ────────────────────────────────────────────────────────────────────────
 
 function ProjectTreeContent() {
+  const viewMode = useAtomValue(viewModeAtom)
+
+  // Skill Workbench mode swaps the project file tree for the skill
+  // explorer — the rail then browses the skills Backlot can edit,
+  // not the writer's worktree.
+  if (viewMode === "skill") {
+    return <SkillExplorer />
+  }
+
   // ProjectFileTree handles its own root resolution: it reads the
   // selected chat's worktree when a chat is active, otherwise it falls
   // back to the canonical project root. The tree shows files in both
