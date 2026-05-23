@@ -154,6 +154,14 @@ Shipped: new MCP tool `open_skill_workbench` on the in-process `backlot-skills` 
 
 Verified: `bun run build` passes. Not yet click-tested in-app.
 
+## Session note — 2026-05-22
+
+Researched: Backlot performance optimization with focus on Canvas. Current Canvas is a React DOM/SVG board, not a pixel canvas; the likely hot paths are pointer-move state updates, whole-board React re-renders, full canvas snapshot invalidation after mutations, and always-rendered offscreen nodes/edges.
+
+Shipped: first Canvas performance pass. Pan, zoom, connection-preview, and node-drag updates now run through requestAnimationFrame; nodes move with GPU-friendly transforms; node/edge rendering is memoized with stable callbacks/theme props; create/update/connect mutations update the React Query canvas cache instead of forcing full read invalidations; and the board now culls offscreen nodes and edges with a generous viewport buffer.
+
+Next: profile Canvas in Electron DevTools with realistic node/image counts, then decide whether image loading, edge rendering, or DOM node volume needs a deeper path. Defer OffscreenCanvas/WebGL until traces prove DOM/SVG cannot keep up.
+
 ## Week 1 — v1 backbone (UI + auth + chat)
 
 - [x] `git init`, write PRD/PLAN/CLAUDE.md/README/NAMING
