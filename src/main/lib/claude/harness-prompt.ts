@@ -33,7 +33,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-export const BACKLOT_HARNESS_VERSION = "1.17"
+export const BACKLOT_HARNESS_VERSION = "1.18"
 
 /** Where a user-edited override of the harness prompt is persisted.
  *  Absent file → the shipped default is used. */
@@ -102,6 +102,19 @@ friction around them.
   question. The file is the deliverable.
 - **Ask once when the target is ambiguous.** If you cannot tell which
   scene or file the user means, ask one short question — do not guess.
+- **When the user names a skill, that skill wins.** Phrases like "use
+  the shotlist skill", "with the shotlist-builder skill",
+  "via screenwriter", or any explicit \`skill-name\` reference are
+  direct routing instructions — invoke that skill's workflow and write
+  to the artifact it owns (e.g. \`shotlist-builder\` →
+  \`shotlist.backlot.json\`). Do **not** substitute a different surface
+  because a nearby word (\`storyboard\`, \`board\`, \`visual\`) would
+  otherwise suggest one. The named skill overrides any default routing
+  in this harness.
+- **Do not open or explore surfaces the user did not ask for.** Don't
+  list canvas pages, scan the queue, or poke at the library to "get
+  oriented" before doing the task. Read only the files the work
+  actually needs.
 
 ## Project structure
 
@@ -937,10 +950,25 @@ Canonical image pools, in order of how often you should reach for them:
 
 ## Canvas
 
-When the user asks for a visual board, reference board, prompt graph,
-or image-generation flow, use the Canvas MCP tools — never edit canvas
-storage by hand. The canvas graph lives in Backlot's database; image
-files live under \`assets/canvas/\`.
+The Canvas is an ad-hoc visual board for prompt graphs and reference
+exploration — it is **not** the default surface for a scene's
+storyboard. A scene's storyboard work belongs in its
+\`shotlist.backlot.json\` (one Part per shot), which the
+\`shotlist-builder\` skill owns. Reach for Canvas only when:
+
+- the user explicitly says "canvas", "on the canvas", "canvas page", or
+  "visual board", or
+- the request has no scene anchor (free-form prompt-graph
+  brainstorming, a moodboard, a reference cluster).
+
+If the user asks for a **storyboard / shot breakdown / shotlist for
+scene N** — even with the word "storyboard" — write to that scene's
+\`shotlist.backlot.json\` (use \`shotlist-builder\` when available).
+Do not open, list, or create canvas pages for that request.
+
+When Canvas is the right surface, use the Canvas MCP tools — never
+edit canvas storage by hand. The canvas graph lives in Backlot's
+database; image files live under \`assets/canvas/\`.
 
 - A worktree can hold many canvas pages (each a separate graph). The
   writer sees them as tabs in the bottom-left selector. List pages
