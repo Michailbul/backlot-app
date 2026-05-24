@@ -160,10 +160,22 @@ const liquidGlassStyle: CSSProperties = {
   WebkitBackdropFilter: "url(#bl-glass-displace) blur(8px) saturate(160%)",
 }
 
+function applyBoardTransform(
+  board: HTMLDivElement | null,
+  viewport: Viewport,
+) {
+  if (!board) return
+  board.style.transform = `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.zoom})`
+}
+
 export function CanvasModeView({ worktreeId }: CanvasModeViewProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const boardRef = useRef<HTMLDivElement | null>(null)
   const viewportStateRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 })
   const viewportFrameRef = useRef<number | null>(null)
+  const viewportCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
   const pointerWorldFrameRef = useRef<number | null>(null)
   const pointerWorldRef = useRef<{ x: number; y: number } | null>(null)
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 })
@@ -273,6 +285,7 @@ export function CanvasModeView({ worktreeId }: CanvasModeViewProps) {
 
   useEffect(() => {
     viewportStateRef.current = viewport
+    applyBoardTransform(boardRef.current, viewport)
   }, [viewport])
 
   useEffect(() => {
@@ -297,6 +310,9 @@ export function CanvasModeView({ worktreeId }: CanvasModeViewProps) {
       if (viewportFrameRef.current !== null) {
         cancelAnimationFrame(viewportFrameRef.current)
       }
+      if (viewportCommitTimeoutRef.current !== null) {
+        clearTimeout(viewportCommitTimeoutRef.current)
+      }
       if (pointerWorldFrameRef.current !== null) {
         cancelAnimationFrame(pointerWorldFrameRef.current)
       }
@@ -305,10 +321,17 @@ export function CanvasModeView({ worktreeId }: CanvasModeViewProps) {
 
   const scheduleViewport = useCallback((next: Viewport) => {
     viewportStateRef.current = next
+    if (viewportCommitTimeoutRef.current !== null) {
+      clearTimeout(viewportCommitTimeoutRef.current)
+    }
+    viewportCommitTimeoutRef.current = setTimeout(() => {
+      viewportCommitTimeoutRef.current = null
+      setViewport(viewportStateRef.current)
+    }, 80)
     if (viewportFrameRef.current !== null) return
     viewportFrameRef.current = requestAnimationFrame(() => {
       viewportFrameRef.current = null
-      setViewport(viewportStateRef.current)
+      applyBoardTransform(boardRef.current, viewportStateRef.current)
     })
   }, [])
 
@@ -318,6 +341,11 @@ export function CanvasModeView({ worktreeId }: CanvasModeViewProps) {
       cancelAnimationFrame(viewportFrameRef.current)
       viewportFrameRef.current = null
     }
+    if (viewportCommitTimeoutRef.current !== null) {
+      clearTimeout(viewportCommitTimeoutRef.current)
+      viewportCommitTimeoutRef.current = null
+    }
+    applyBoardTransform(boardRef.current, next)
     setViewport(next)
   }, [])
 
@@ -1898,9 +1926,10 @@ export function CanvasModeView({ worktreeId }: CanvasModeViewProps) {
       )}
 
       <div
+        ref={boardRef}
         className="absolute left-0 top-0 h-[4000px] w-[4000px] origin-top-left"
         style={{
-          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+          transform: `translate3d(${viewportStateRef.current.x}px, ${viewportStateRef.current.y}px, 0) scale(${viewportStateRef.current.zoom})`,
           willChange: "transform",
         }}
       >
