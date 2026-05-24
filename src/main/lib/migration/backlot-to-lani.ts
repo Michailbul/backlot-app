@@ -13,6 +13,8 @@
  *   • Only ~/.lani exists             → rewrite any straggler suffixes, write marker
  *   • Both exist (rare)               → log a warning, leave both in place, no-op
  */
+import Database from "better-sqlite3"
+import { app } from "electron"
 import { existsSync, mkdirSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -139,9 +141,51 @@ export function runBacklotToLaniMigration(): void {
     console.warn("[migration] suffix sweep failed:", err)
   }
 
+  // Rewrite any cached ~/.backlot/ paths in the SQLite DB. The DB lives
+  // under electron's userData dir, separate from ~/.lani, so the dir
+  // rename above doesn't touch it. Path columns: projects.path,
+  // worktrees.worktree_path, canvas_assets.source_path,
+  // agent_threads.messages (JSON blob — REPLACE on the literal substring
+  // works because paths are encoded as JSON strings).
+  try {
+    rewriteDatabasePaths()
+  } catch (err) {
+    console.warn("[migration] DB path rewrite failed:", err)
+  }
+
   try {
     writeMarker()
   } catch (err) {
     console.warn("[migration] failed to write marker:", err)
+  }
+}
+
+function rewriteDatabasePaths(): void {
+  const dbPath = join(app.getPath("userData"), "data", "agents.db")
+  if (!existsSync(dbPath)) return
+
+  const db = new Database(dbPath)
+  try {
+    db.exec(`
+      BEGIN;
+      UPDATE projects
+        SET path = REPLACE(path, '/.backlot/', '/.lani/')
+        WHERE path LIKE '%/.backlot/%';
+      UPDATE projects
+        SET icon_path = REPLACE(icon_path, '/.backlot/', '/.lani/')
+        WHERE icon_path LIKE '%/.backlot/%';
+      UPDATE worktrees
+        SET worktree_path = REPLACE(worktree_path, '/.backlot/', '/.lani/')
+        WHERE worktree_path LIKE '%/.backlot/%';
+      UPDATE canvas_assets
+        SET source_path = REPLACE(source_path, '/.backlot/', '/.lani/')
+        WHERE source_path LIKE '%/.backlot/%';
+      UPDATE agent_threads
+        SET messages = REPLACE(messages, '/.backlot/', '/.lani/')
+        WHERE messages LIKE '%/.backlot/%';
+      COMMIT;
+    `)
+  } finally {
+    db.close()
   }
 }
