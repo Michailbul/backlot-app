@@ -19,7 +19,6 @@ import {
   setupFocusUpdateCheck,
 } from "./lib/auto-updater"
 import { closeDatabase, initDatabase } from "./lib/db"
-import { runBacklotToLaniMigration } from "./lib/migration/backlot-to-lani"
 import {
   getLaunchDirectory,
   isCliInstalled,
@@ -931,16 +930,6 @@ if (gotTheLock) {
         console.error("[Auth] Failed to update cookie:", err)
       }
     })
-
-    // One-shot rename of legacy ~/.backlot → ~/.lani and its
-    // *.backlot.json file suffixes. Idempotent via a marker file.
-    // Must run before initDatabase() so the new path is in place when
-    // any data-dir consumer wakes up.
-    try {
-      runBacklotToLaniMigration()
-    } catch (error) {
-      console.error("[App] backlot-to-lani migration failed:", error)
-    }
 
     // Initialize database
     try {
